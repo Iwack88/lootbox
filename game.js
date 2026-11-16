@@ -92,7 +92,8 @@ function render() {
   $('gold').textContent = state.gold;
   $('exp').textContent = state.exp;
 
-  $('customer').innerHTML = `<h2>${c.icon} ${c.name}</h2>` + c.needs.map(n => {
+  $('custTitle').textContent = `${c.icon} ${c.name}`;
+  $('customer').innerHTML = c.needs.map(n => {
     const have = t[n.attr] || 0;
     const pct = Math.min(100, have / n.target * 100);
     return `<div class="need">

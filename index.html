@@ -13,19 +13,22 @@
   <span>⭐ EXP <b id="exp">0</b></span>
 </header>
 
-<section class="card" id="customer"></section>
+<details class="card" open>
+  <summary><span id="custTitle"></span></summary>
+  <div id="customer"></div>
+</details>
 
-<section class="card">
-  <h2>Box <small id="slotInfo"></small></h2>
+<details class="card" open>
+  <summary>Box <small id="slotInfo"></small></summary>
   <div id="box" class="box"></div>
   <div id="preview" class="preview"></div>
   <button id="send" class="primary">Box absenden</button>
-</section>
+</details>
 
-<section class="card">
-  <h2>Shop</h2>
+<details class="card" open>
+  <summary>Shop</summary>
   <div id="shop" class="shop"></div>
-</section>
+</details>
 
 <div id="result" class="overlay hidden"></div>
 <script src="game.js"></script>
