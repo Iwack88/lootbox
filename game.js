@@ -39,21 +39,42 @@ const CLASSES = [
   { cls: 'Gaukler',       icon: '🎭',   needs: [ { attr: 'hp', prio: 2, target: 20 }, { attr: 'magic', prio: 1, target: 15 } ] },
 ];
 
+const EPIC_CLASSES = [
+  { cls: 'König',      icon: '👑', needs: [ { attr: 'hp', prio: 3, target: 70 }, { attr: 'armor', prio: 3, target: 40 }, { attr: 'melee', prio: 2, target: 20 } ] },
+  { cls: 'Held',       icon: '🦸', needs: [ { attr: 'melee', prio: 3, target: 45 }, { attr: 'hp', prio: 3, target: 50 }, { attr: 'armor', prio: 2, target: 30 } ] },
+  { cls: 'Erzmagier',  icon: '🔮', needs: [ { attr: 'magic', prio: 3, target: 60 }, { attr: 'hp', prio: 2, target: 40 }, { attr: 'armor', prio: 1, target: 20 } ] },
+];
+
+// mult: Belohnungsfaktor, time: Sekunden bis der Kunde geht, scale: Skalierung der Zielwerte
+const RARITY = {
+  common: { label: 'Gewöhnlich', mult: 1, time: 90, scale: 1,    weight: 70 },
+  rare:   { label: 'Selten',     mult: 2, time: 75, scale: 1.25, weight: 22 },
+  epic:   { label: 'Episch',     mult: 4, time: 60, scale: 1,    weight: 8 },
+};
+const QUEUE_SIZE = 5;
+const SPAWN_INTERVAL = 5;
+
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 
+function rollRarity() {
+  let r = Math.random() * 100;
+  for (const [key, def] of Object.entries(RARITY)) {
+    if ((r -= def.weight) < 0) return key;
+  }
+  return 'common';
+}
+
+let nextId = 1;
 // Zielwerte schwanken um ±20% (auf 5 gerundet), damit gleiche Klassen nicht identisch sind.
-function generateCustomer(prev) {
-  const base = pick(CLASSES.filter(c => !prev || c.cls !== prev.cls));
-  const needs = base.needs.map(n => ({ ...n, target: Math.max(5, Math.round(n.target * (0.8 + Math.random() * 0.4) / 5) * 5) }));
-  return { name: pick(NAMES), cls: base.cls, icon: base.icon, needs };
+function generateCustomer() {
+  const rarity = rollRarity();
+  const def = RARITY[rarity];
+  const base = pick(rarity === 'epic' ? EPIC_CLASSES : CLASSES);
+  const needs = base.needs.map(n => ({ ...n, target: Math.max(5, Math.round(n.target * def.scale * (0.8 + Math.random() * 0.4) / 5) * 5) }));
+  return { id: nextId++, name: pick(NAMES), cls: base.cls, icon: base.icon, needs, rarity, timeLeft: def.time, maxTime: def.time };
 }
 
-const state = { gold: 30, exp: 0, capacity: 10, box: [], customer: null };
-
-function newCustomer() {
-  state.customer = generateCustomer(state.customer);
-  state.box = [];
-}
+const state = { gold: 30, exp: 0, capacity: 10, box: [], active: null, queue: [], spawnT: 0 };
 
 const usedWeight = () => state.box.reduce((s, i) => s + i.weight, 0);
 
@@ -67,7 +88,7 @@ function totals() {
 function quality() {
   const t = totals();
   let sum = 0, wsum = 0;
-  for (const n of state.customer.needs) {
+  for (const n of state.active.needs) {
     const w = NEED_WEIGHT[n.prio];
     sum += w * Math.min(1, (t[n.attr] || 0) / n.target);
     wsum += w;
@@ -75,11 +96,19 @@ function quality() {
   return sum / wsum;
 }
 
-const rewardFor = q => ({ gold: 10 + Math.round(q * 30), exp: 5 + Math.round(q * 15) });
+const rewardFor = (q, c) => {
+  const m = RARITY[c.rarity].mult;
+  return { gold: Math.round((10 + q * 30) * m), exp: Math.round((5 + q * 15) * m) };
+};
+
+function refundBox() {
+  for (const it of state.box) state.gold += it.cost;
+  state.box = [];
+}
 
 function buy(id) {
   const it = ITEMS.find(i => i.id === id);
-  if (state.gold < it.cost || usedWeight() + it.weight > state.capacity) return;
+  if (!state.active || state.gold < it.cost || usedWeight() + it.weight > state.capacity) return;
   state.gold -= it.cost;
   state.box.push(it);
   render();
@@ -92,27 +121,61 @@ function removeFromBox(index) {
   render();
 }
 
+// Der bisher aktive Kunde nimmt den Platz des gewählten in der Liste ein; seine Zeit läuft dort weiter.
+function selectCustomer(id) {
+  const i = state.queue.findIndex(c => c.id === id);
+  if (i < 0) return;
+  const chosen = state.queue[i];
+  refundBox();
+  if (state.active) state.queue[i] = state.active;
+  else state.queue.splice(i, 1);
+  state.active = chosen;
+  render();
+}
+
 function send() {
+  if (!state.active) return;
   const q = quality();
-  const r = rewardFor(q);
+  const r = rewardFor(q, state.active);
   state.gold += r.gold;
   state.exp += r.exp;
+  state.box = [];
+  state.active = null;
   const label = q >= 0.9 ? 'Perfekt!' : q >= 0.6 ? 'Gut' : q >= 0.3 ? 'Geht so' : 'Schlecht';
   $('result').innerHTML = `
     <h1>${label}</h1>
     <div>Erfüllung: ${Math.round(q * 100)}%</div>
     <div>💰 +${r.gold} &nbsp; ⭐ +${r.exp}</div>
-    <button class="primary" id="next">Nächster Kunde</button>`;
+    <button class="primary" id="next">Weiter</button>`;
   $('result').classList.remove('hidden');
-  $('next').onclick = () => { $('result').classList.add('hidden'); newCustomer(); render(); };
+  $('next').onclick = () => { $('result').classList.add('hidden'); render(); };
 }
 
-function render() {
-  const c = state.customer, t = totals();
-  $('gold').textContent = state.gold;
-  $('exp').textContent = state.exp;
+function tick(dt) {
+  let changed = false;
+  for (const c of state.queue) c.timeLeft -= dt;
+  const before = state.queue.length;
+  state.queue = state.queue.filter(c => c.timeLeft > 0);
+  if (state.queue.length !== before) changed = true;
 
-  $('customer').innerHTML = `<div class="cust-name">${c.icon} ${c.name} <small>${c.cls}</small></div>` + c.needs.map(n => {
+  state.spawnT -= dt;
+  if (state.spawnT <= 0 && state.queue.length < QUEUE_SIZE) {
+    state.queue.push(generateCustomer());
+    state.spawnT = SPAWN_INTERVAL;
+    changed = true;
+  }
+  if (changed) renderQueue(); else updateTimers();
+}
+
+function updateTimers() {
+  for (const c of state.queue) {
+    const el = document.querySelector(`[data-cid="${c.id}"] .timer > div`);
+    if (el) el.style.width = `${Math.max(0, c.timeLeft / c.maxTime * 100)}%`;
+  }
+}
+
+function needsHtml(c, t) {
+  return c.needs.map(n => {
     const have = t[n.attr] || 0;
     const pct = Math.min(100, have / n.target * 100);
     return `<div class="need">
@@ -120,6 +183,31 @@ function render() {
       <div class="bar"><div style="width:${pct}%"></div></div>
     </div>`;
   }).join('');
+}
+
+function renderQueue() {
+  $('queue').innerHTML = state.queue.length ? state.queue.map(c => {
+    const needs = c.needs.map(n => ATTRS[n.attr].icon + '●'.repeat(n.prio)).join(' ');
+    const m = RARITY[c.rarity].mult;
+    return `<button class="queue-item r-${c.rarity}" data-cid="${c.id}">
+      <span class="ico">${c.icon}</span>
+      <span class="txt">${c.name} <small>${c.cls}</small><small>${needs}</small></span>
+      <span class="mult">${m > 1 ? '×' + m : ''}</span>
+      <span class="timer"><div style="width:${Math.max(0, c.timeLeft / c.maxTime * 100)}%"></div></span>
+    </button>`;
+  }).join('') : '<div class="empty">Gerade keine Kunden…</div>';
+  $('queue').querySelectorAll('.queue-item').forEach(el => el.onclick = () => selectCustomer(+el.dataset.cid));
+  $('queueInfo').textContent = `${state.queue.length}/${QUEUE_SIZE}`;
+}
+
+function render() {
+  const c = state.active;
+  $('gold').textContent = state.gold;
+  $('exp').textContent = state.exp;
+
+  $('customer').innerHTML = c
+    ? `<div class="cust-name r-${c.rarity}">${c.icon} ${c.name} <small>${c.cls} · ${RARITY[c.rarity].label}</small></div>` + needsHtml(c, totals())
+    : '<div class="empty">Wähle einen Kunden aus der Liste</div>';
 
   const used = usedWeight();
   $('box').innerHTML = state.box.length
@@ -130,11 +218,16 @@ function render() {
   $('weightBar').style.width = `${used / state.capacity * 100}%`;
   $('weightBar').classList.toggle('full', used >= state.capacity);
 
-  const q = quality(), r = rewardFor(q);
-  $('preview').textContent = `Aktuell: ${Math.round(q * 100)}% → 💰 ${r.gold}  ⭐ ${r.exp}`;
+  if (c) {
+    const q = quality(), r = rewardFor(q, c);
+    $('preview').textContent = `Aktuell: ${Math.round(q * 100)}% → 💰 ${r.gold}  ⭐ ${r.exp}`;
+  } else {
+    $('preview').textContent = '';
+  }
+  $('send').disabled = !c;
 
   $('shop').innerHTML = ITEMS.map(it => {
-    const off = state.gold < it.cost || usedWeight() + it.weight > state.capacity;
+    const off = !c || state.gold < it.cost || used + it.weight > state.capacity;
     return `<button class="shop-item" data-id="${it.id}" ${off ? 'disabled' : ''}>
       <span class="ico">${it.icon}</span>
       <span class="txt">${it.name}<small>${ATTRS[it.attr].icon} +${it.value} · ${it.weight} kg</small></span>
@@ -142,8 +235,15 @@ function render() {
     </button>`;
   }).join('');
   $('shop').querySelectorAll('.shop-item').forEach(el => el.onclick = () => buy(el.dataset.id));
+  renderQueue();
 }
 
 $('send').onclick = send;
-newCustomer();
+for (let i = 0; i < 3; i++) state.queue.push(generateCustomer());
 render();
+let lastT = performance.now();
+setInterval(() => {
+  const now = performance.now();
+  tick(Math.min((now - lastT) / 1000, 1));
+  lastT = now;
+}, 250);

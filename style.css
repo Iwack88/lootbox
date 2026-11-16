@@ -47,3 +47,20 @@ button.primary:active { transform: scale(.98); }
 .overlay h1 { margin: 0; }
 .overlay button { width: auto; padding: 14px 40px; }
 .cust-name { font-size: 20px; font-weight: 700; margin-bottom: 10px; }
+.queue { display: flex; flex-direction: column; gap: 6px; }
+.queue-item { position: relative; overflow: hidden; display: flex; align-items: center; gap: 10px; background: #34325c; border: 0; border-left: 4px solid #8a88b0; border-radius: 10px; color: inherit; font: inherit; padding: 8px 10px 14px; text-align: left; touch-action: manipulation; }
+.queue-item:active { transform: scale(.98); }
+.queue-item .ico { font-size: 24px; }
+.queue-item .txt { flex: 1; font-size: 14px; }
+.queue-item .txt small { display: block; }
+.queue-item .mult { font-weight: 700; color: #ffd166; }
+.queue-item .timer { position: absolute; left: 0; right: 0; bottom: 0; height: 5px; background: #15142a; }
+.queue-item .timer > div { height: 100%; background: #8a88b0; transition: width .25s linear; }
+.r-rare { border-left-color: #4aa3ff; }
+.r-rare .timer > div { background: #4aa3ff; }
+.r-epic { border-left-color: #ffd166; background: #46385e; }
+.r-epic .timer > div { background: #ffd166; }
+.cust-name.r-rare { color: #4aa3ff; }
+.cust-name.r-epic { color: #ffd166; }
+.cust-name small { font-size: 13px; font-weight: 400; opacity: .8; }
+button.primary:disabled { opacity: .4; }
