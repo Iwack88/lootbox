@@ -78,3 +78,4 @@ button.primary:disabled { opacity: .4; }
 .pick-item .req { font-size: 13px; }
 button.fab { position: fixed; right: 16px; bottom: max(16px, env(safe-area-inset-bottom)); width: auto; padding: 14px 22px; border-radius: 999px; box-shadow: 0 4px 14px rgba(0,0,0,.5); z-index: 5; }
 body { padding-bottom: 90px; }
+.queue-item .txt .needs { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 3px; }

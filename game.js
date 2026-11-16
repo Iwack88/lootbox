@@ -217,11 +217,11 @@ function needsHtml(c, t) {
 
 function renderQueue() {
   $('queue').innerHTML = state.queue.length ? state.queue.map(c => {
-    const needs = c.needs.map(n => ATTRS[n.attr].icon + '●'.repeat(n.prio)).join(' ');
+    const needs = c.needs.map(n => `<span class="need-icons">${ATTRS[n.attr].icon.repeat(n.prio)}</span>`).join('');
     const m = RARITY[c.rarity].mult;
     return `<button class="queue-item r-${c.rarity}" data-cid="${c.id}">
       <span class="ico">${c.icon}</span>
-      <span class="txt">${c.name} <small>${c.cls}</small><small>${needs}</small></span>
+      <span class="txt">${c.name} <small>${c.cls}</small><span class="needs">${needs}</span></span>
       <span class="mult">${m > 1 ? '×' + m : ''}</span>
       <span class="secs">${Math.ceil(c.timeLeft)}s</span>
       <span class="timer"><div style="width:${Math.max(0, c.timeLeft / c.maxTime * 100)}%"></div></span>
