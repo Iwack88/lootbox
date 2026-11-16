@@ -130,6 +130,7 @@ function selectCustomer(id) {
   if (state.active) state.queue[i] = state.active;
   else state.queue.splice(i, 1);
   state.active = chosen;
+  if (autoCollapse) $('queueCard').open = false;
   render();
 }
 
@@ -148,7 +149,11 @@ function send() {
     <div>💰 +${r.gold} &nbsp; ⭐ +${r.exp}</div>
     <button class="primary" id="next">Weiter</button>`;
   $('result').classList.remove('hidden');
-  $('next').onclick = () => { $('result').classList.add('hidden'); render(); };
+  $('next').onclick = () => {
+    $('result').classList.add('hidden');
+    if (autoCollapse) $('queueCard').open = true;
+    render();
+  };
 }
 
 function tick(dt) {
@@ -240,6 +245,18 @@ function render() {
   $('shop').querySelectorAll('.shop-item').forEach(el => el.onclick = () => buy(el.dataset.id));
   renderQueue();
 }
+
+// Auto-Einklappen der Kundenliste: nach Kundenwahl zu, nach dem Absenden wieder auf.
+let autoCollapse = localStorage.getItem('autoCollapseQueue') !== '0';
+function renderAuto() { $('autoToggle').textContent = (autoCollapse ? '☑' : '☐') + ' Auto-Einklappen'; }
+$('autoToggle').onclick = e => {
+  e.preventDefault();
+  e.stopPropagation();
+  autoCollapse = !autoCollapse;
+  localStorage.setItem('autoCollapseQueue', autoCollapse ? '1' : '0');
+  renderAuto();
+};
+renderAuto();
 
 $('send').onclick = send;
 for (let i = 0; i < 3; i++) state.queue.push(generateCustomer());

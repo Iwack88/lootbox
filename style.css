@@ -65,3 +65,5 @@ button.primary:active { transform: scale(.98); }
 .cust-name small { font-size: 13px; font-weight: 400; opacity: .8; }
 button.primary:disabled { opacity: .4; }
 .queue-item .secs { min-width: 36px; text-align: right; font-variant-numeric: tabular-nums; opacity: .9; }
+.auto { margin-left: auto; font-size: 13px; font-weight: 400; opacity: .85; padding: 4px 0 4px 10px; }
+#queueCard > summary::after { margin-left: 0; }
