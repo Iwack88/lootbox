@@ -18,23 +18,29 @@
   <div id="queue" class="queue"></div>
 </details>
 
-<details class="card" open>
+<details class="card" id="custCard" open>
   <summary>Aktiver Kunde</summary>
   <div id="customer"></div>
 </details>
 
-<details class="card" open>
+<details class="card" id="pickCard" open>
+  <summary>Box wählen <small id="pickInfo"></small></summary>
+  <div id="boxPicker" class="picker"></div>
+</details>
+
+<details class="card" id="boxCard" open>
   <summary>Box <small id="slotInfo"></small></summary>
   <div class="bar weight"><div id="weightBar"></div></div>
   <div id="box" class="box"></div>
   <div id="preview" class="preview"></div>
-  <button id="send" class="primary">Box absenden</button>
 </details>
 
-<details class="card" open>
+<details class="card" id="shopCard" open>
   <summary>Shop</summary>
   <div id="shop" class="shop"></div>
 </details>
+
+<button id="send" class="primary fab">📦 Absenden</button>
 
 <div id="result" class="overlay hidden"></div>
 <script src="game.js"></script>

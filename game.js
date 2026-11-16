@@ -19,6 +19,12 @@ const ITEMS = [
   { id: 'wand',   name: 'Zauberstab',        icon: '🪄', attr: 'magic', value: 15, weight: 1, cost: 10 },
 ];
 
+const BOXES = [
+  { id: 'small',  name: 'Kleine Kiste',   icon: '📦', capacity: 10, exp: 0 },
+  { id: 'medium', name: 'Mittlere Kiste', icon: '🧰', capacity: 18, exp: 60 },
+  { id: 'large',  name: 'Große Truhe',    icon: '🗄️', capacity: 30, exp: 200 },
+];
+
 const NEED_WEIGHT = { 3: 3, 2: 2, 1: 1 };
 const PRIO_LABEL = { 3: 'sehr wichtig', 2: 'wichtig', 1: 'gering' };
 
@@ -74,7 +80,9 @@ function generateCustomer() {
   return { id: nextId++, name: pick(NAMES), cls: base.cls, icon: base.icon, needs, rarity, timeLeft: def.time, maxTime: def.time };
 }
 
-const state = { gold: 30, exp: 0, capacity: 10, box: [], active: null, queue: [], spawnT: 0 };
+const state = { gold: 30, exp: 0, boxType: null, box: [], active: null, queue: [], spawnT: 0 };
+
+const capacity = () => state.boxType ? state.boxType.capacity : 0;
 
 const usedWeight = () => state.box.reduce((s, i) => s + i.weight, 0);
 
@@ -108,7 +116,7 @@ function refundBox() {
 
 function buy(id) {
   const it = ITEMS.find(i => i.id === id);
-  if (!state.active || state.gold < it.cost || usedWeight() + it.weight > state.capacity) return;
+  if (!state.active || !state.boxType || state.gold < it.cost || usedWeight() + it.weight > capacity()) return;
   state.gold -= it.cost;
   state.box.push(it);
   render();
@@ -130,17 +138,32 @@ function selectCustomer(id) {
   if (state.active) state.queue[i] = state.active;
   else state.queue.splice(i, 1);
   state.active = chosen;
-  if (autoCollapse) $('queueCard').open = false;
+  state.boxType = null;
+  if (autoCollapse) {
+    $('queueCard').open = false;
+    for (const id of ['custCard', 'pickCard', 'boxCard']) $(id).open = true;
+    $('shopCard').open = false;
+  }
+  render();
+}
+
+function chooseBox(id) {
+  const type = BOXES.find(b => b.id === id);
+  if (!state.active || !type || state.exp < type.exp) return;
+  refundBox();
+  state.boxType = type;
+  $('shopCard').open = true;
   render();
 }
 
 function send() {
-  if (!state.active) return;
+  if (!state.active || !state.boxType) return;
   const q = quality();
   const r = rewardFor(q, state.active);
   state.gold += r.gold;
   state.exp += r.exp;
   state.box = [];
+  state.boxType = null;
   state.active = null;
   const label = q >= 0.9 ? 'Perfekt!' : q >= 0.6 ? 'Gut' : q >= 0.3 ? 'Geht so' : 'Schlecht';
   $('result').innerHTML = `
@@ -220,11 +243,11 @@ function render() {
   const used = usedWeight();
   $('box').innerHTML = state.box.length
     ? state.box.map((it, i) => `<button class="box-item" data-i="${i}"><span class="ico">${it.icon}</span><span class="txt">${it.name}</span><span class="kg">${it.weight} kg ✕</span></button>`).join('')
-    : '<div class="empty">Leer – kaufe Items im Shop</div>';
+    : `<div class="empty">${state.boxType ? 'Leer – kaufe Items im Shop' : 'Wähle zuerst eine Box'}</div>`;
   $('box').querySelectorAll('.box-item').forEach(el => el.onclick = () => removeFromBox(+el.dataset.i));
-  $('slotInfo').textContent = `${used}/${state.capacity} kg`;
-  $('weightBar').style.width = `${used / state.capacity * 100}%`;
-  $('weightBar').classList.toggle('full', used >= state.capacity);
+  $('slotInfo').textContent = state.boxType ? `${used}/${capacity()} kg` : '';
+  $('weightBar').style.width = capacity() ? `${used / capacity() * 100}%` : '0%';
+  $('weightBar').classList.toggle('full', capacity() > 0 && used >= capacity());
 
   if (c) {
     const q = quality(), r = rewardFor(q, c);
@@ -232,10 +255,10 @@ function render() {
   } else {
     $('preview').textContent = '';
   }
-  $('send').disabled = !c;
+  $('send').disabled = !c || !state.boxType;
 
   $('shop').innerHTML = ITEMS.map(it => {
-    const off = !c || state.gold < it.cost || used + it.weight > state.capacity;
+    const off = !c || !state.boxType || state.gold < it.cost || used + it.weight > capacity();
     return `<button class="shop-item" data-id="${it.id}" ${off ? 'disabled' : ''}>
       <span class="ico">${it.icon}</span>
       <span class="txt">${it.name}<small>${ATTRS[it.attr].icon} +${it.value} · ${it.weight} kg</small></span>
@@ -243,7 +266,24 @@ function render() {
     </button>`;
   }).join('');
   $('shop').querySelectorAll('.shop-item').forEach(el => el.onclick = () => buy(el.dataset.id));
+  renderPicker();
   renderQueue();
+}
+
+function renderPicker() {
+  $('boxPicker').innerHTML = !state.active
+    ? '<div class="empty">Wähle zuerst einen Kunden</div>'
+    : BOXES.map(b => {
+        const locked = state.exp < b.exp;
+        const sel = state.boxType && state.boxType.id === b.id;
+        return `<button class="pick-item${sel ? ' selected' : ''}" data-bid="${b.id}" ${locked ? 'disabled' : ''}>
+          <span class="ico">${b.icon}</span>
+          <span class="txt">${b.name}<small>${b.capacity} kg</small></span>
+          <span class="req">${locked ? '🔒 ' + b.exp + ' EXP' : sel ? '✔' : ''}</span>
+        </button>`;
+      }).join('');
+  $('boxPicker').querySelectorAll('.pick-item').forEach(el => el.onclick = () => chooseBox(el.dataset.bid));
+  $('pickInfo').textContent = state.boxType ? state.boxType.name : '';
 }
 
 // Auto-Einklappen der Kundenliste: nach Kundenwahl zu, nach dem Absenden wieder auf.

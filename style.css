@@ -67,3 +67,14 @@ button.primary:disabled { opacity: .4; }
 .queue-item .secs { min-width: 36px; text-align: right; font-variant-numeric: tabular-nums; opacity: .9; }
 .auto { margin-left: auto; font-size: 13px; font-weight: 400; opacity: .85; padding: 4px 0 4px 10px; }
 #queueCard > summary::after { margin-left: 0; }
+.picker { display: flex; flex-direction: column; gap: 6px; }
+.pick-item { display: flex; align-items: center; gap: 10px; background: #34325c; border: 2px solid transparent; border-radius: 10px; color: inherit; font: inherit; padding: 10px; text-align: left; touch-action: manipulation; }
+.pick-item.selected { border-color: #ffd166; }
+.pick-item:disabled { opacity: .45; }
+.pick-item:not(:disabled):active { transform: scale(.98); }
+.pick-item .ico { font-size: 26px; }
+.pick-item .txt { flex: 1; font-size: 14px; }
+.pick-item .txt small { display: block; }
+.pick-item .req { font-size: 13px; }
+button.fab { position: fixed; right: 16px; bottom: max(16px, env(safe-area-inset-bottom)); width: auto; padding: 14px 22px; border-radius: 999px; box-shadow: 0 4px 14px rgba(0,0,0,.5); z-index: 5; }
+body { padding-bottom: 90px; }
