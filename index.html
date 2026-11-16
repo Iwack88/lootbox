@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1b1a2e">
+<title>Lootbox Packer</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <span>💰 <b id="gold">0</b></span>
+  <span>⭐ EXP <b id="exp">0</b></span>
+</header>
+
+<section class="card" id="customer"></section>
+
+<section class="card">
+  <h2>Box <small id="slotInfo"></small></h2>
+  <div id="box" class="box"></div>
+  <div id="preview" class="preview"></div>
+  <button id="send" class="primary">Box absenden</button>
+</section>
+
+<section class="card">
+  <h2>Shop</h2>
+  <div id="shop" class="shop"></div>
+</section>
+
+<div id="result" class="overlay hidden"></div>
+<script src="game.js"></script>
+</body>
+</html>

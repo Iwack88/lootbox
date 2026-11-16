@@ -1,0 +1,38 @@
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; background: #1b1a2e; color: #eee; font-family: system-ui, sans-serif; }
+body { max-width: 480px; margin: 0 auto; padding: 12px; padding-top: max(12px, env(safe-area-inset-top)); display: flex; flex-direction: column; gap: 12px; min-height: 100dvh; }
+header { display: flex; justify-content: space-between; font-size: 18px; }
+.card { background: #26253f; border-radius: 14px; padding: 14px; }
+h2 { margin: 0 0 10px; font-size: 18px; display: flex; justify-content: space-between; align-items: baseline; }
+small { opacity: .7; font-weight: 400; }
+
+.need { margin-bottom: 10px; }
+.need-head { display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 4px; }
+.prio { font-size: 12px; padding: 1px 8px; border-radius: 99px; background: #3a3860; }
+.prio.p3 { background: #b23a48; }
+.prio.p2 { background: #c78a2b; }
+.bar { height: 12px; background: #15142a; border-radius: 99px; overflow: hidden; }
+.bar > div { height: 100%; background: #4cc38a; transition: width .2s; }
+
+.box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.slot { aspect-ratio: 1; border-radius: 10px; background: #15142a; border: 2px dashed #3a3860; display: flex; align-items: center; justify-content: center; font-size: 26px; }
+.slot.item { border: 2px solid #6c63ff; background: #34325c; }
+.slot.item:active { transform: scale(.95); }
+.preview { margin: 10px 0; font-size: 14px; text-align: center; opacity: .85; }
+
+.shop { display: flex; flex-direction: column; gap: 8px; }
+.shop-item { display: flex; align-items: center; gap: 10px; background: #34325c; border: 0; border-radius: 10px; color: inherit; font: inherit; padding: 10px; text-align: left; touch-action: manipulation; }
+.shop-item:disabled { opacity: .4; }
+.shop-item:not(:disabled):active { transform: scale(.98); }
+.shop-item .ico { font-size: 28px; }
+.shop-item .txt { flex: 1; font-size: 14px; }
+.shop-item .txt small { display: block; }
+.shop-item .cost { font-weight: 700; }
+
+button.primary { width: 100%; padding: 14px; font: inherit; font-size: 18px; font-weight: 700; color: #1b1a2e; background: #ffd166; border: 0; border-radius: 12px; touch-action: manipulation; }
+button.primary:active { transform: scale(.98); }
+
+.overlay { position: fixed; inset: 0; background: rgba(10, 9, 25, .88); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; padding: 24px; }
+.overlay.hidden { display: none; }
+.overlay h1 { margin: 0; }
+.overlay button { width: auto; padding: 14px 40px; }
