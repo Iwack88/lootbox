@@ -7,16 +7,16 @@ const ATTRS = {
   armor: { name: 'Rüstung',  icon: '🛡️' },
 };
 
-// Größere Items sind pro Slot effizienter, kosten aber deutlich mehr Gold.
+// Größere Items sind pro kg effizienter, kosten aber deutlich mehr Gold.
 const ITEMS = [
-  { id: 'pot1',   name: 'Kleiner Heiltrank', icon: '🧪', attr: 'hp',    value: 10, slots: 1, cost: 5 },
-  { id: 'pot2',   name: 'Heiltrank',         icon: '🧪', attr: 'hp',    value: 25, slots: 2, cost: 18 },
-  { id: 'pot3',   name: 'Großer Heiltrank',  icon: '🍶', attr: 'hp',    value: 50, slots: 3, cost: 45 },
-  { id: 'dag',    name: 'Dolch',             icon: '🗡️', attr: 'melee', value: 8,  slots: 1, cost: 6 },
-  { id: 'sword',  name: 'Schwert',           icon: '⚔️', attr: 'melee', value: 20, slots: 2, cost: 22 },
-  { id: 'shield', name: 'Holzschild',        icon: '🛡️', attr: 'armor', value: 10, slots: 1, cost: 8 },
-  { id: 'plate',  name: 'Plattenrüstung',    icon: '🥋', attr: 'armor', value: 30, slots: 3, cost: 40 },
-  { id: 'wand',   name: 'Zauberstab',        icon: '🪄', attr: 'magic', value: 15, slots: 1, cost: 10 },
+  { id: 'pot1',   name: 'Kleiner Heiltrank', icon: '🧪', attr: 'hp',    value: 10, weight: 1, cost: 5 },
+  { id: 'pot2',   name: 'Heiltrank',         icon: '🧪', attr: 'hp',    value: 25, weight: 2, cost: 18 },
+  { id: 'pot3',   name: 'Großer Heiltrank',  icon: '🍶', attr: 'hp',    value: 50, weight: 3, cost: 45 },
+  { id: 'dag',    name: 'Dolch',             icon: '🗡️', attr: 'melee', value: 8,  weight: 1, cost: 6 },
+  { id: 'sword',  name: 'Schwert',           icon: '⚔️', attr: 'melee', value: 20, weight: 2, cost: 22 },
+  { id: 'shield', name: 'Holzschild',        icon: '🛡️', attr: 'armor', value: 10, weight: 1, cost: 8 },
+  { id: 'plate',  name: 'Plattenrüstung',    icon: '🥋', attr: 'armor', value: 30, weight: 3, cost: 40 },
+  { id: 'wand',   name: 'Zauberstab',        icon: '🪄', attr: 'magic', value: 15, weight: 1, cost: 10 },
 ];
 
 const NEED_WEIGHT = { 3: 3, 2: 2, 1: 1 };
@@ -28,14 +28,14 @@ const CUSTOMERS = [
   { name: 'Schurke Finn',  icon: '🥷', needs: [ { attr: 'melee', prio: 3, target: 28 }, { attr: 'hp', prio: 2, target: 20 } ] },
 ];
 
-const state = { gold: 30, exp: 0, slots: 4, box: [], customer: null };
+const state = { gold: 30, exp: 0, capacity: 10, box: [], customer: null };
 
 function newCustomer() {
   state.customer = CUSTOMERS[Math.floor(Math.random() * CUSTOMERS.length)];
   state.box = [];
 }
 
-const usedSlots = () => state.box.reduce((s, i) => s + i.slots, 0);
+const usedWeight = () => state.box.reduce((s, i) => s + i.weight, 0);
 
 function totals() {
   const t = {};
@@ -59,7 +59,7 @@ const rewardFor = q => ({ gold: 10 + Math.round(q * 30), exp: 5 + Math.round(q *
 
 function buy(id) {
   const it = ITEMS.find(i => i.id === id);
-  if (state.gold < it.cost || usedSlots() + it.slots > state.slots) return;
+  if (state.gold < it.cost || usedWeight() + it.weight > state.capacity) return;
   state.gold -= it.cost;
   state.box.push(it);
   render();
@@ -102,25 +102,23 @@ function render() {
     </div>`;
   }).join('');
 
-  const cells = [];
-  state.box.forEach((it, i) => {
-    for (let s = 0; s < it.slots; s++) {
-      cells.push(`<div class="slot item" data-i="${i}">${s === 0 ? it.icon : '▪️'}</div>`);
-    }
-  });
-  while (cells.length < state.slots) cells.push('<div class="slot"></div>');
-  $('box').innerHTML = cells.join('');
-  $('box').querySelectorAll('.item').forEach(el => el.onclick = () => removeFromBox(+el.dataset.i));
-  $('slotInfo').textContent = `${usedSlots()}/${state.slots} Slots`;
+  const used = usedWeight();
+  $('box').innerHTML = state.box.length
+    ? state.box.map((it, i) => `<button class="box-item" data-i="${i}"><span class="ico">${it.icon}</span><span class="txt">${it.name}</span><span class="kg">${it.weight} kg ✕</span></button>`).join('')
+    : '<div class="empty">Leer – kaufe Items im Shop</div>';
+  $('box').querySelectorAll('.box-item').forEach(el => el.onclick = () => removeFromBox(+el.dataset.i));
+  $('slotInfo').textContent = `${used}/${state.capacity} kg`;
+  $('weightBar').style.width = `${used / state.capacity * 100}%`;
+  $('weightBar').classList.toggle('full', used >= state.capacity);
 
   const q = quality(), r = rewardFor(q);
   $('preview').textContent = `Aktuell: ${Math.round(q * 100)}% → 💰 ${r.gold}  ⭐ ${r.exp}`;
 
   $('shop').innerHTML = ITEMS.map(it => {
-    const off = state.gold < it.cost || usedSlots() + it.slots > state.slots;
+    const off = state.gold < it.cost || usedWeight() + it.weight > state.capacity;
     return `<button class="shop-item" data-id="${it.id}" ${off ? 'disabled' : ''}>
       <span class="ico">${it.icon}</span>
-      <span class="txt">${it.name}<small>${ATTRS[it.attr].icon} +${it.value} · ${it.slots} Slot${it.slots > 1 ? 's' : ''}</small></span>
+      <span class="txt">${it.name}<small>${ATTRS[it.attr].icon} +${it.value} · ${it.weight} kg</small></span>
       <span class="cost">💰 ${it.cost}</span>
     </button>`;
   }).join('');
