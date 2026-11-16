@@ -23,15 +23,25 @@ const NEED_WEIGHT = { 3: 3, 2: 2, 1: 1 };
 const PRIO_LABEL = { 3: 'sehr wichtig', 2: 'wichtig', 1: 'gering' };
 
 const CUSTOMERS = [
-  { name: 'Krieger Willi', icon: '🪓', needs: [ { attr: 'hp', prio: 3, target: 50 }, { attr: 'melee', prio: 2, target: 20 }, { attr: 'armor', prio: 3, target: 20 } ] },
-  { name: 'Magierin Luna', icon: '🧙‍♀️', needs: [ { attr: 'magic', prio: 3, target: 30 }, { attr: 'hp', prio: 2, target: 25 }, { attr: 'armor', prio: 1, target: 10 } ] },
-  { name: 'Schurke Finn',  icon: '🥷', needs: [ { attr: 'melee', prio: 3, target: 28 }, { attr: 'hp', prio: 2, target: 20 } ] },
+  { name: 'Krieger Willi',    icon: '🪓',   needs: [ { attr: 'hp', prio: 3, target: 50 }, { attr: 'melee', prio: 2, target: 20 }, { attr: 'armor', prio: 3, target: 20 } ] },
+  { name: 'Magierin Luna',    icon: '🧙‍♀️', needs: [ { attr: 'magic', prio: 3, target: 30 }, { attr: 'hp', prio: 2, target: 25 }, { attr: 'armor', prio: 1, target: 10 } ] },
+  { name: 'Schurke Finn',     icon: '🥷',   needs: [ { attr: 'melee', prio: 3, target: 28 }, { attr: 'hp', prio: 2, target: 20 } ] },
+  { name: 'Paladin Gero',     icon: '🛡️',   needs: [ { attr: 'armor', prio: 3, target: 40 }, { attr: 'hp', prio: 3, target: 35 }, { attr: 'melee', prio: 1, target: 10 } ] },
+  { name: 'Bogenschützin Ida', icon: '🏹',  needs: [ { attr: 'melee', prio: 3, target: 24 }, { attr: 'armor', prio: 2, target: 10 }, { attr: 'hp', prio: 1, target: 10 } ] },
+  { name: 'Hexer Morwen',     icon: '🧛',   needs: [ { attr: 'magic', prio: 3, target: 45 }, { attr: 'hp', prio: 1, target: 10 } ] },
+  { name: 'Zwerg Brom',       icon: '⛏️',   needs: [ { attr: 'armor', prio: 3, target: 30 }, { attr: 'melee', prio: 2, target: 20 } ] },
+  { name: 'Heilerin Selma',   icon: '🌿',   needs: [ { attr: 'hp', prio: 3, target: 60 }, { attr: 'magic', prio: 2, target: 15 }, { attr: 'armor', prio: 1, target: 10 } ] },
+  { name: 'Barbar Thok',      icon: '💪',   needs: [ { attr: 'melee', prio: 3, target: 40 }, { attr: 'hp', prio: 2, target: 35 } ] },
+  { name: 'Novize Pip',       icon: '📚',   needs: [ { attr: 'magic', prio: 2, target: 15 }, { attr: 'hp', prio: 2, target: 10 }, { attr: 'armor', prio: 1, target: 10 } ] },
+  { name: 'Ritter Konrad',    icon: '🐴',   needs: [ { attr: 'armor', prio: 3, target: 30 }, { attr: 'melee', prio: 3, target: 20 }, { attr: 'hp', prio: 2, target: 25 } ] },
+  { name: 'Gaukler Jax',      icon: '🎭',   needs: [ { attr: 'hp', prio: 2, target: 20 }, { attr: 'magic', prio: 1, target: 15 } ] },
 ];
 
 const state = { gold: 30, exp: 0, capacity: 10, box: [], customer: null };
 
 function newCustomer() {
-  state.customer = CUSTOMERS[Math.floor(Math.random() * CUSTOMERS.length)];
+  const pool = CUSTOMERS.filter(c => c !== state.customer);
+  state.customer = pool[Math.floor(Math.random() * pool.length)];
   state.box = [];
 }
 
@@ -92,8 +102,7 @@ function render() {
   $('gold').textContent = state.gold;
   $('exp').textContent = state.exp;
 
-  $('custTitle').textContent = `${c.icon} ${c.name}`;
-  $('customer').innerHTML = c.needs.map(n => {
+  $('customer').innerHTML = `<div class="cust-name">${c.icon} ${c.name}</div>` + c.needs.map(n => {
     const have = t[n.attr] || 0;
     const pct = Math.min(100, have / n.target * 100);
     return `<div class="need">
