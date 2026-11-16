@@ -169,8 +169,10 @@ function tick(dt) {
 
 function updateTimers() {
   for (const c of state.queue) {
-    const el = document.querySelector(`[data-cid="${c.id}"] .timer > div`);
-    if (el) el.style.width = `${Math.max(0, c.timeLeft / c.maxTime * 100)}%`;
+    const el = document.querySelector(`[data-cid="${c.id}"]`);
+    if (!el) continue;
+    el.querySelector('.timer > div').style.width = `${Math.max(0, c.timeLeft / c.maxTime * 100)}%`;
+    el.querySelector('.secs').textContent = `${Math.ceil(c.timeLeft)}s`;
   }
 }
 
@@ -193,6 +195,7 @@ function renderQueue() {
       <span class="ico">${c.icon}</span>
       <span class="txt">${c.name} <small>${c.cls}</small><small>${needs}</small></span>
       <span class="mult">${m > 1 ? '×' + m : ''}</span>
+      <span class="secs">${Math.ceil(c.timeLeft)}s</span>
       <span class="timer"><div style="width:${Math.max(0, c.timeLeft / c.maxTime * 100)}%"></div></span>
     </button>`;
   }).join('') : '<div class="empty">Gerade keine Kunden…</div>';

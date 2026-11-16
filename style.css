@@ -64,3 +64,4 @@ button.primary:active { transform: scale(.98); }
 .cust-name.r-epic { color: #ffd166; }
 .cust-name small { font-size: 13px; font-weight: 400; opacity: .8; }
 button.primary:disabled { opacity: .4; }
+.queue-item .secs { min-width: 36px; text-align: right; font-variant-numeric: tabular-nums; opacity: .9; }
