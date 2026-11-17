@@ -4,6 +4,12 @@ body { max-width: 480px; margin: 0 auto; padding: 12px; padding-top: max(12px, e
 header { display: flex; justify-content: space-between; font-size: 18px; }
 .card { background: #26253f; border-radius: 14px; padding: 14px; }
 .home h2 { margin: 0 0 10px; font-size: 20px; }
+.home { display: flex; flex-direction: column; gap: 12px; }
+.workshop-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: #34325c; border-radius: 10px; padding: 10px; }
+.workshop-row span { min-width: 0; overflow-wrap: anywhere; }
+.workshop-row small { display: block; }
+.workshop-row button { flex-shrink: 0; }
+.workshop-row button:disabled, #openWorkshop:disabled { opacity: .45; }
 .order-dialog { width: min(1200px, calc(100% - 24px)); max-width: none; max-height: calc(100dvh - 24px); padding: 16px; border: 1px solid #6c63ff; border-radius: 16px; background: #1b1a2e; color: #eee; overflow-y: auto; overscroll-behavior: contain; }
 .order-dialog::backdrop { background: rgba(10, 9, 25, .9); }
 .order-heading { position: sticky; top: -16px; z-index: 2; display: flex; align-items: center; gap: 12px; background: #1b1a2e; padding: 8px 0 12px; }

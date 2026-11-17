@@ -107,6 +107,148 @@ function createShoppingGame(options = {}) {
   return run;
 }
 
+test('resource rewards are fixed, visible, meet tier thresholds and grant streak points instead of an item', () => {
+  for (const [tier, amount, threshold, points] of [
+    ['wannabe', 2, .5, 1], ['adventurer', 3, .7, 2], ['hero', 4, .85, 3], ['demigod', 5, 1, 4],
+  ]) {
+    const storage = new Map();
+    const run = createGame({ storage });
+    run(`state.exp = expForLevel(7); globalThis.rollMaterialReward = () => true;
+      globalThis.rollCustomerTier = () => CUSTOMER_TIERS.find(t => t.id === '${tier}');
+      state.queue = [generateCustomer()]; selectCustomer(state.queue[0].id);
+      globalThis.reward = JSON.stringify(state.active.itemReward);`);
+    const offer = JSON.parse(run('reward'));
+    assert.equal(offer.material.amount, amount);
+    assert.ok(['wood', 'iron', 'cloth'].includes(offer.material.id));
+    assert.equal(offer.item, undefined);
+    assert.equal(run(`rewardFor(${threshold - .000001}, state.active, true).earned`), false);
+    assert.equal(run('rewardFor(1, state.active, false).earned'), false);
+    assert.equal(run(`rewardFor(${threshold}, state.active, true).points`), points);
+    assert.match(run("$('selectionCustomer').innerHTML"), new RegExp(`×${amount}`));
+    const restored = createGame({ storage });
+    assert.equal(restored('JSON.stringify(state.active.itemReward)'), run('reward'));
+    restored(`chooseBox('small'); state.active.needs = [{attr:'hp', target:10, prio:1}];
+      packItem('pot1'); globalThis.beforeItems = Object.values(state.inventory).reduce((a,b) => a+b,0); send();`);
+    assert.equal(restored(`state.materials['${offer.material.id}']`), amount);
+    assert.equal(restored('Object.values(state.inventory).reduce((a,b) => a+b,0)'), restored('beforeItems'));
+    assert.equal(restored('state.streak'), points);
+    assert.match(restored("$('result').innerHTML"), /✓ (Holz|Eisen|Stoff)/);
+    restored('send()');
+    assert.equal(restored(`state.materials['${offer.material.id}']`), amount);
+    assert.equal(createGame({ storage })(`state.materials['${offer.material.id}']`), amount);
+  }
+});
+
+test('an unmet resource reward and an empty box award no resources or streak', () => {
+  const run = createGame();
+  run(`globalThis.rollMaterialReward = () => true; state.queue = [generateCustomer()];
+    selectCustomer(state.queue[0].id); chooseBox('small'); send();`);
+  assert.equal(run('Object.values(state.materials).reduce((a,b) => a+b,0)'), 0);
+  assert.equal(run('state.streak'), 0);
+  assert.match(run("$('result').innerHTML"), /Keine Rohstoffbelohnung/);
+});
+
+test('workshop unlocks, recipes, slot limits and material consumption are independent and enforced', () => {
+  const run = createGame();
+  run("state.materials = {wood:10, iron:10, cloth:10}; startCraft('bandage')");
+  assert.equal(run('state.crafts.length'), 0);
+  assert.equal(run("$('openWorkshop').disabled"), true);
+  run("state.exp = expForLevel(3); render(); openWorkshop(); startCraft('ironSword')");
+  assert.equal(run("$('workshopDialog').open"), true);
+  assert.equal(run('state.crafts.length'), 0);
+  run("startCraft('bandage'); startCraft('buckler')");
+  assert.equal(run('state.crafts.length'), 1);
+  assert.equal(run('state.materials.cloth'), 8);
+  assert.equal(run('state.materials.wood'), 10);
+  assert.equal(run('state.crafts[0].finishAt - lastUpdatedAt'), 15 * 60000);
+  run('collectCraft(0)');
+  assert.equal(run('state.crafts.length'), 1);
+  run("state.exp = expForLevel(6); startCraft('buckler')");
+  assert.equal(run('state.crafts.length'), 2);
+  assert.equal(run('state.materials.wood'), 8);
+  assert.equal(run('state.materials.iron'), 9);
+  run("state.exp = expForLevel(7); startCraft('sparkStone')");
+  assert.equal(run('state.crafts.length'), 2);
+  run("state.exp = expForLevel(10); startCraft('sparkStone')");
+  assert.equal(run('state.crafts.length'), 3);
+  assert.equal(run('state.crafts[0].finishAt - lastUpdatedAt'), 15 * 60000);
+  assert.equal(run('state.crafts[2].finishAt - lastUpdatedAt'), 24 * 60000);
+  run('renderRoadmap()');
+  assert.match(run("$('roadmap').innerHTML"), /Werkstatt: 1 Herstellungsplatz/);
+  assert.match(run("$('roadmap').innerHTML"), /Werkstatt: 2 Herstellungsplätze/);
+  assert.match(run("$('roadmap').innerHTML"), /20 % schnellere neue Herstellungsaufträge/);
+  assert.match(run("$('roadmap').innerHTML"), /Rezept: .* Eisenschwert/);
+});
+
+test('crafts finish offline, occupy slots until collected and grant their item once across reloads', () => {
+  const storage = new Map();
+  let now = 1_700_000_000_000;
+  const options = { storage, now: () => now };
+  const run = createGame(options);
+  run(`state.exp = expForLevel(3); state.materials.cloth = 2; render(); startCraft('bandage');`);
+  const finish = run('state.crafts[0].finishAt');
+  const pending = createGame(options);
+  assert.equal(pending('state.materials.cloth'), 0);
+  now = finish - 1;
+  pending('collectCraft(0)');
+  assert.equal(pending('state.inventory.bandage'), undefined);
+  now = finish;
+  const ready = createGame(options);
+  assert.equal(ready('state.crafts.length'), 1);
+  assert.match(ready("$('workshopSummary').textContent"), /1 abholbereit/);
+  ready("state.materials.cloth = 2; startCraft('bandage')");
+  assert.equal(ready('state.materials.cloth'), 2);
+  ready('collectCraft(0); collectCraft(0)');
+  assert.equal(ready('state.inventory.bandage'), 1);
+  assert.equal(ready('state.crafts.length'), 0);
+  const reloaded = createGame(options);
+  assert.equal(reloaded('state.inventory.bandage'), 1);
+  assert.equal(reloaded('state.crafts.length'), 0);
+  reloaded("selectCustomer(state.queue[0].id); chooseBox('small'); packItem('bandage')");
+  assert.equal(reloaded('state.box[0].id'), 'bandage');
+});
+
+test('version 1 saves retain customers and progress and migrate to an empty workshop without rerolling offers', () => {
+  const storage = new Map();
+  const run = createGame({ storage });
+  run(`globalThis.rollMaterialReward = () => false; state.queue = [generateCustomer()]; state.exp = expForLevel(3);
+    state.gold = 345; selectCustomer(state.queue[0].id); chooseBox('small'); packItem('pot1');`);
+  const data = JSON.parse(storage.get(run('SAVE_KEY')));
+  data.version = 1;
+  delete data.state.materials;
+  delete data.state.crafts;
+  storage.set(run('SAVE_KEY'), JSON.stringify(data));
+  const restored = createGame({ storage });
+  assert.equal(restored('savingBlocked'), false);
+  assert.equal(restored('state.gold'), 345);
+  assert.equal(restored('state.box.length'), 1);
+  assert.equal(restored('state.active.itemReward.item.id'), data.state.active.rewardItem);
+  assert.deepEqual(JSON.parse(restored('JSON.stringify(state.materials)')), { wood: 0, iron: 0, cloth: 0 });
+  assert.equal(restored('state.crafts.length'), 0);
+  assert.equal(JSON.parse(storage.get(run('SAVE_KEY'))).version, 2);
+});
+
+test('corrupt workshop data is rejected without replacing the local save', () => {
+  const original = new Map();
+  const game = createGame({ storage: original });
+  const key = game('SAVE_KEY');
+  const mutations = [
+    data => { data.state.materials.wood = -1; },
+    data => { data.state.materials.wood = 0.5; },
+    data => { data.state.crafts = [{ item: 'bandage', finishAt: 123 }]; },
+    data => { data.state.queue[0].rewardItem = undefined; data.state.queue[0].rewardMaterial = { id: 'invalid', amount: 2 }; },
+  ];
+  for (const mutate of mutations) {
+    const data = JSON.parse(original.get(key));
+    mutate(data);
+    const raw = JSON.stringify(data);
+    const storage = new Map([[key, raw]]);
+    const restored = createGame({ storage, console: { error() {} } });
+    assert.equal(restored('savingBlocked'), true);
+    assert.equal(storage.get(key), raw);
+  }
+});
+
 test('local saves restore progression, inventory and a packed order with canonical item and box references', () => {
   const storage = new Map();
   const run = createGame({ storage });
@@ -433,7 +575,7 @@ test('each customer offers one fixed reward only at its tier threshold, with inc
   const run = createShoppingGame();
   let previousMaxCost = 0;
   for (const [tier, threshold] of [['wannabe', 0.5], ['adventurer', 0.7], ['hero', 0.85], ['demigod', 1]]) {
-    run(`globalThis.rollCustomerTier = () => CUSTOMER_TIERS.find(t => t.id === '${tier}'); globalThis.customer = generateCustomer();`);
+    run(`globalThis.rollMaterialReward = () => false; globalThis.rollCustomerTier = () => CUSTOMER_TIERS.find(t => t.id === '${tier}'); globalThis.customer = generateCustomer();`);
     assert.equal(run('customer.itemReward.quality'), threshold);
     assert.equal(run('rewardFor(0, customer, true).item'), null);
     assert.equal(run(`rewardFor(${threshold - 0.000001}, customer, true).item`), null);
@@ -453,7 +595,7 @@ test('sending at each tier threshold consumes the box and awards exactly one ite
     ['demigod', 50, ['pot3'], 4],
   ]) {
     const run = createShoppingGame();
-    run(`globalThis.rollCustomerTier = () => CUSTOMER_TIERS.find(t => t.id === '${tier}');
+    run(`globalThis.rollMaterialReward = () => false; globalThis.rollCustomerTier = () => CUSTOMER_TIERS.find(t => t.id === '${tier}');
       state.queue = [generateCustomer()];
       for (const id of ${JSON.stringify(items)}) addToCart(id);
       checkout(); finishShopping(); selectCustomer(state.queue[0].id);
@@ -472,7 +614,7 @@ test('sending at each tier threshold consumes the box and awards exactly one ite
 
 test('advertised reward stays fixed and sending grants exactly one item once', () => {
   const run = createShoppingGame();
-  run(`globalThis.rollCustomerTier = () => CUSTOMER_TIERS.find(t => t.id === 'demigod');
+  run(`globalThis.rollMaterialReward = () => false; globalThis.rollCustomerTier = () => CUSTOMER_TIERS.find(t => t.id === 'demigod');
     state.queue = [generateCustomer()];
     addToCart('pot1'); checkout(); finishShopping();
     selectCustomer(state.queue[0].id);
@@ -495,7 +637,7 @@ test('advertised reward stays fixed and sending grants exactly one item once', (
 
 test('reward badges show the item icon and threshold and results explain the unmet tier requirement', () => {
   const run = createShoppingGame();
-  run(`Math.random = () => 0;
+  run(`Math.random = () => 0; globalThis.rollMaterialReward = () => false;
     globalThis.rollCustomerTier = () => CUSTOMER_TIERS.find(t => t.id === 'hero');
     state.queue = [generateCustomer()]; finishShopping(); selectCustomer(state.queue[0].id); chooseBox('small');`);
   assert.match(run("$('customer').innerHTML"), /class="reward-icon"[^>]*>🥋/);
@@ -511,6 +653,7 @@ test('reward badges show the item icon and threshold and results explain the unm
 test('quality shown just below a reward threshold does not round up and promise an unearned item', () => {
   const run = createGame();
   run(`state.streak = 7; selectCustomer(state.queue[0].id); chooseBox('small');
+    state.active.itemReward = {quality: 0.5, item: ITEMS.find(item => item.id === 'pot1')};
     state.active.needs = [{attr:'hp', target:20.01, prio:1}];
     packItem('pot1');`);
   assert.match(run("$('preview').innerHTML"), /Aktuell: 49%/);
@@ -816,7 +959,7 @@ test('generated customers and reward items obey level gates and increased queue 
     run(`state.exp = expForLevel(${level});`);
     assert.equal(run(`Array.from({length: 100}, () => generateCustomer()).every(customer =>
       CUSTOMER_TIERS.find(tier => tier.id === customer.tier).level <= progression().level &&
-      isUnlocked(customer.itemReward.item))`), true);
+      (!customer.itemReward.item || isUnlocked(customer.itemReward.item)))`), true);
   }
   run('state.exp = expForLevel(3); openRoadmap(); tick(SPAWN_INTERVAL - 1);');
   assert.equal(run('state.queue.length'), 4);
@@ -844,6 +987,7 @@ test('waiting and active customers never expire or cost streak points during lon
 test('a delivery earns its checkpoint package automatically and falling below then regaining it cannot farm rewards', () => {
   const run = createGame();
   run(`state.streak = 9; selectCustomer(state.queue[0].id); chooseBox('small');
+    state.active.itemReward = {quality: 0.5, item: ITEMS.find(item => item.id === 'pot1')};
     state.active.needs = [{attr:'hp', target:10, prio:1}];
     packItem('pot1'); send();`);
   assert.equal(run('state.streak'), 10);
@@ -1203,7 +1347,7 @@ test('the expanded catalog is staged independently of shop offers and customer r
 
 test('fine-grained recipes at an exact weighted reward threshold are not rejected by floating-point noise', () => {
   const run = createShoppingGame();
-  run(`globalThis.rollCustomerTier = () => CUSTOMER_TIERS.find(tier => tier.id === 'adventurer');
+  run(`globalThis.rollMaterialReward = () => false; globalThis.rollCustomerTier = () => CUSTOMER_TIERS.find(tier => tier.id === 'adventurer');
     state.queue = [generateCustomer()];
     addToCart('shield'); addToCart('buckler'); addToCart('sparkStone');
     checkout(); finishShopping(); selectCustomer(state.queue[0].id); chooseBox('medium');

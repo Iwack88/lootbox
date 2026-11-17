@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1b1a2e">
 <meta http-equiv="Cache-Control" content="no-cache">
 <title>Lootbox Packer</title>
-<link rel="stylesheet" href="style.css?v=22">
+<link rel="stylesheet" href="style.css?v=23">
 </head>
 <body>
 <header>
@@ -41,6 +41,12 @@
 </div>
 
 <main class="home">
+<section class="card workshop-home">
+  <h2>🔨 Werkstatt</h2>
+  <p id="workshopSummary" class="hint"></p>
+  <p id="homeMaterials" class="hint"></p>
+  <button id="openWorkshop" class="secondary" aria-haspopup="dialog" aria-controls="workshopDialog">Werkstatt öffnen</button>
+</section>
 <section class="card" aria-labelledby="queueTitle">
   <h2 id="queueTitle" tabindex="-1">Kunden <small id="queueInfo"></small></h2>
   <p class="hint">Alle 30 Minuten kommt ein Kunde dazu, solange ein Platz frei ist. Wähle einen Kunden, um seine Box zu packen.</p>
@@ -130,6 +136,20 @@
   <button id="finishShopping" class="primary">Einkauf beenden</button>
 </dialog>
 
+<dialog id="workshopDialog" class="merchant-dialog" aria-labelledby="workshopTitle">
+  <div class="merchant-heading">
+    <h2 id="workshopTitle">🔨 Werkstatt</h2>
+    <button id="closeWorkshop" class="secondary">Zurück</button>
+  </div>
+  <p id="workshopSaveStatus" class="hint" role="status"></p>
+  <p class="hint">Rohstoffe gibt es manchmal statt eines Items als Kundenbelohnung. Beim Herstellen werden sie sofort verbraucht. Fertige Items warten auf Abholung – auch offline. Ein Platz bleibt bis zur Abholung belegt. Ab Level 7 starten Aufträge 20 % schneller.</p>
+  <p id="workshopMaterials"></p>
+  <h3>Herstellungsplätze</h3>
+  <div id="craftSlots" class="shop"></div>
+  <h3>Rezepte</h3>
+  <div id="recipes" class="shop"></div>
+</dialog>
+
 <dialog id="roadmapDialog" class="merchant-dialog roadmap-dialog" aria-labelledby="roadmapTitle">
   <div class="merchant-heading">
     <h2 id="roadmapTitle">Level-Milestones</h2>
@@ -150,7 +170,7 @@
 </dialog>
 
 <div id="result" class="overlay hidden"></div>
-<script src="sound.js?v=22"></script>
-<script src="game.js?v=22"></script>
+<script src="sound.js?v=23"></script>
+<script src="game.js?v=23"></script>
 </body>
 </html>

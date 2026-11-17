@@ -121,6 +121,19 @@ const RESTOCK_IDS = ['pot1', 'dag', 'shield', 'wand'];
 const SHOP_BASE_IDS = ['bandage', 'dag', 'leatherCap', 'sparkStone'];
 const SHOP_SLOT_INTERVAL = 5;
 const shopPrice = item => Math.ceil(item.cost * 1.25);
+const MATERIALS = {
+  wood: { name: 'Holz', icon: '🪵' },
+  iron: { name: 'Eisen', icon: '⛓️' },
+  cloth: { name: 'Stoff', icon: '🧵' },
+};
+const WORKSHOP_LEVEL = 3;
+const WORKSHOP_SLOTS = [{ level: 3, count: 1 }, { level: 6, count: 2 }, { level: 10, count: 3 }];
+const RECIPES = [
+  { item: 'bandage', level: 3, materials: { cloth: 2 }, minutes: 15 },
+  { item: 'buckler', level: 3, materials: { wood: 2, iron: 1 }, minutes: 20 },
+  { item: 'ironSword', level: 4, materials: { wood: 1, iron: 2 }, minutes: 25 },
+  { item: 'sparkStone', level: 5, materials: { wood: 1, cloth: 2 }, minutes: 30 },
+];
 const CUSTOMER_TIERS = [
   { id: 'wannabe', label: 'Wannabe', level: 1, points: 1, weight: 50, scale: 0.6, rarity: 'common',
     reward: { quality: 0.5, ids: ['pot1', 'dag', 'shield', 'wand', 'bandage', 'ironSword', 'buckler', 'leatherCap', 'sparkStone'] } },
@@ -152,6 +165,8 @@ function progression(totalExp = state.exp) {
 const isUnlocked = entry => progression().level >= entry.level;
 
 const queueCapacity = () => CUSTOMER_PLACES.filter(isUnlocked).at(-1).count;
+const workshopCapacity = (level = progression().level) => WORKSHOP_SLOTS.filter(entry => entry.level <= level).at(-1)?.count || 0;
+const craftDuration = (recipe, level = progression().level) => recipe.minutes * 60 * 1000 * (level >= 7 ? 0.8 : 1);
 
 const shopCapacity = (level = progression().level) => SHOP_BASE_IDS.length + Math.floor(level / SHOP_SLOT_INTERVAL);
 
@@ -175,6 +190,12 @@ function unlocksAtLevel(level) {
     ...BOXES.filter(box => box.level === level).map(box => `Kiste: ${box.icon} ${box.name} (${box.slots} Items · ${boxEffectsText(box)})`),
     ...CUSTOMER_TIERS.filter(tier => tier.level === level).map(tier => `Kunden: ${tier.label}`),
     ...CUSTOMER_PLACES.filter(places => places.level === level).map(places => `${places.count} Kundenplätze`),
+    ...WORKSHOP_SLOTS.filter(entry => entry.level === level).map(entry => `Werkstatt: ${entry.count} Herstellungs${entry.count === 1 ? 'platz' : 'plätze'}`),
+    ...RECIPES.filter(recipe => recipe.level === level).map(recipe => {
+      const item = ITEMS.find(entry => entry.id === recipe.item);
+      return `Rezept: ${item.icon} ${item.name}`;
+    }),
+    ...(level === 7 ? ['Werkstatt: 20 % schnellere neue Herstellungsaufträge'] : []),
     ...(level === 1 ? ['Shop: 4 feste Basis-Angebote – Verband, Kurzschwert, Lederkappe und Funkenstein'] : []),
     ...(level % SHOP_SLOT_INTERVAL === 0 ? [`Shop: +1 zufälliger Angebotsplatz (${shopCapacity(level)} Plätze insgesamt) ab dem nächsten Händlerbesuch`] : []),
   ];
@@ -204,6 +225,7 @@ function rollCustomerTier() {
   }
   return CUSTOMER_TIERS[0];
 }
+function rollMaterialReward() { return Math.random() < 0.35; }
 
 // Ganzzahlige Zielwerte schwanken um ±20%, damit gleiche Klassen nicht identisch sind.
 function generateCustomer() {
@@ -211,10 +233,10 @@ function generateCustomer() {
   const rarity = tier.rarity;
   const base = pick(CUSTOMER_CLASSES[tier.id]);
   const needs = base.needs.map(n => ({ ...n, target: Math.max(5, Math.round(n.target * tier.scale * (0.8 + Math.random() * 0.4))) }));
-  const itemReward = {
-    quality: tier.reward.quality,
-    item: pick(ITEMS.filter(item => tier.reward.ids.includes(item.id) && isUnlocked(item))),
-  };
+  const item = pick(ITEMS.filter(item => tier.reward.ids.includes(item.id) && isUnlocked(item)));
+  const itemReward = rollMaterialReward()
+    ? { quality: tier.reward.quality, material: { id: pick(Object.keys(MATERIALS)), amount: CUSTOMER_TIERS.indexOf(tier) + 2 } }
+    : { quality: tier.reward.quality, item };
   return { id: nextId++, name: pick(NAMES), cls: base.cls, icon: base.icon, needs, rarity, tier: tier.id, tierLabel: tier.label, itemReward };
 }
 
@@ -222,16 +244,17 @@ const state = {
   gold: 500, exp: 0, inventory: Object.fromEntries(RESTOCK_IDS.map(id => [id, 5])), cart: {}, boxType: null, box: [], active: null, queue: [], spawnT: SPAWN_INTERVAL,
   shopping: false, shopOffers: [], completed: 0, debt: 0, showingResult: false,
   streak: 0, claimedCheckpoints: [], pendingDiscounts: [], activeDiscount: null,
+  materials: { wood: 0, iron: 0, cloth: 0 }, crafts: [],
 };
 
 const SAVE_KEY = 'lootboxPacker.save';
-const SAVE_VERSION = 1;
+const SAVE_VERSION = 2;
 let lastUpdatedAt = Date.now();
 let savingBlocked = false;
 let storageError = '';
 
 function showSaveStatus(message, error = false) {
-  for (const id of ['saveStatus', 'orderSaveStatus', 'shopSaveStatus']) {
+  for (const id of ['saveStatus', 'orderSaveStatus', 'shopSaveStatus', 'workshopSaveStatus']) {
     if ($(id).textContent !== message) $(id).textContent = message;
     $(id).classList.toggle('error', error);
   }
@@ -246,7 +269,9 @@ function storageFailure(message, error) {
 function savedCustomer(customer) {
   if (!customer) return null;
   return { id: customer.id, name: customer.name, cls: customer.cls, tier: customer.tier,
-    needs: customer.needs, rewardItem: customer.itemReward.item.id };
+    needs: customer.needs, ...(customer.itemReward.item
+      ? { rewardItem: customer.itemReward.item.id }
+      : { rewardMaterial: customer.itemReward.material }) };
 }
 
 function saveGame() {
@@ -267,7 +292,7 @@ function decodeSave(data) {
   const require = condition => { if (!condition) throw new Error('Ungültiger oder inkompatibler Spielstand.'); };
   const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
   const count = value => Number.isSafeInteger(value) && value >= 0;
-  require(record(data) && data.version === SAVE_VERSION && count(data.savedAt) && record(data.state));
+  require(record(data) && [1, SAVE_VERSION].includes(data.version) && count(data.savedAt) && record(data.state));
   const saved = data.state;
   for (const key of ['gold', 'exp', 'debt', 'streak', 'completed']) require(count(saved[key]));
   require(saved.completed < MERCHANT_INTERVAL && typeof saved.shopping === 'boolean');
@@ -296,9 +321,18 @@ function decodeSave(data) {
       require(record(need) && Object.hasOwn(ATTRS, need.attr) && [1, 2, 3].includes(need.prio) && count(need.target) && need.target > 0);
       return { attr: need.attr, prio: need.prio, target: need.target };
     });
-    require(new Set(needs.map(need => need.attr)).size === needs.length && tier.reward.ids.includes(value.rewardItem));
+    require(new Set(needs.map(need => need.attr)).size === needs.length);
+    let itemReward;
+    if (value.rewardItem !== undefined) {
+      require(value.rewardMaterial === undefined && tier.reward.ids.includes(value.rewardItem));
+      itemReward = { quality: tier.reward.quality, item: itemFor(value.rewardItem) };
+    } else {
+      require(record(value.rewardMaterial) && Object.hasOwn(MATERIALS, value.rewardMaterial.id)
+        && value.rewardMaterial.amount === CUSTOMER_TIERS.indexOf(tier) + 2);
+      itemReward = { quality: tier.reward.quality, material: { id: value.rewardMaterial.id, amount: value.rewardMaterial.amount } };
+    }
     return { id: value.id, name: value.name, cls: base.cls, icon: base.icon, tier: tier.id, tierLabel: tier.label,
-      rarity: tier.rarity, needs, itemReward: { quality: tier.reward.quality, item: itemFor(value.rewardItem) } };
+      rarity: tier.rarity, needs, itemReward };
   };
   require(Array.isArray(saved.queue) && Array.isArray(saved.box) && Array.isArray(saved.shopOffers));
   const queue = saved.queue.map(customerFor);
@@ -328,9 +362,16 @@ function decodeSave(data) {
   const activeDiscount = saved.activeDiscount;
   require(activeDiscount === null || (saved.shopping && claimedCheckpoints.includes(activeDiscount) &&
     CHECKPOINTS.some(entry => entry.points === activeDiscount && entry.discount) && !pendingDiscounts.includes(activeDiscount)));
+  const materials = data.version === 1 ? { wood: 0, iron: 0, cloth: 0 } : saved.materials;
+  require(record(materials) && Object.keys(materials).length === Object.keys(MATERIALS).length
+    && Object.keys(MATERIALS).every(id => Object.hasOwn(materials, id) && count(materials[id])));
+  const crafts = data.version === 1 ? [] : saved.crafts;
+  require(Array.isArray(crafts) && crafts.length <= workshopCapacity(level));
+  require(crafts.every(craft => record(craft) && RECIPES.some(recipe => recipe.item === craft.item && recipe.level <= level)
+    && count(craft.finishAt)));
   return { gold: saved.gold, exp: saved.exp, debt: saved.debt, streak: saved.streak, completed: saved.completed,
     spawnT: saved.spawnT, shopping: saved.shopping, showingResult: false, inventory, cart, boxType, box, active, queue,
-    shopOffers, claimedCheckpoints, pendingDiscounts, activeDiscount };
+    shopOffers, claimedCheckpoints, pendingDiscounts, activeDiscount, materials: { ...materials }, crafts: crafts.map(craft => ({ ...craft })) };
 }
 
 function loadGame() {
@@ -408,7 +449,7 @@ function renderStreak() {
 }
 
 function openStreak(selected = null) {
-  $('streakRules').textContent = `Punkte bei erreichter Item-Reward-Schwelle: ${CUSTOMER_TIERS.map(tier => `${tier.label} +${tier.points} (ab ${Math.round(tier.reward.quality * 100)} %)`).join(' · ')}. Schwächere Boxen geben 0 Punkte. Kunden warten unbegrenzt; Abwesenheit kostet keine Serienpunkte.`;
+  $('streakRules').textContent = `Punkte bei erreichter Reward-Schwelle: ${CUSTOMER_TIERS.map(tier => `${tier.label} +${tier.points} (ab ${Math.round(tier.reward.quality * 100)} %)`).join(' · ')}. Schwächere Boxen geben 0 Punkte. Kunden warten unbegrenzt; Abwesenheit kostet keine Serienpunkte.`;
   $('streakRewards').innerHTML = CHECKPOINTS.map(checkpoint => `<section id="checkpoint-${checkpoint.points}" tabindex="-1" class="milestone${state.claimedCheckpoints.includes(checkpoint.points) ? ' unlocked' : ''}${checkpoint.points === selected ? ' selected-checkpoint' : ''}">
     <h3>${checkpoint.icon} ${checkpoint.points} Punkte · ${checkpoint.title}</h3>
     <p>${checkpoint.description}</p><small>${checkpointStatus(checkpoint)}</small>
@@ -449,9 +490,11 @@ const qualityPercent = q => Math.floor(Number((q * 100).toFixed(10)));
 
 const rewardFor = (q, c, hasPackedItems = state.box.length > 0) => {
   const m = RARITY[c.rarity].mult;
-  const item = hasPackedItems && q >= c.itemReward.quality ? c.itemReward.item : null;
-  const points = item ? CUSTOMER_TIERS.find(tier => tier.id === c.tier).points : 0;
-  return { gold: Math.round((10 + q * 30) * m), exp: Math.round((5 + q * 15) * m), item, points };
+  const earned = hasPackedItems && q >= c.itemReward.quality;
+  const item = earned ? c.itemReward.item || null : null;
+  const material = earned ? c.itemReward.material || null : null;
+  const points = earned ? CUSTOMER_TIERS.find(tier => tier.id === c.tier).points : 0;
+  return { gold: Math.round((10 + q * 30) * m), exp: Math.round((5 + q * 15) * m), item, material, earned, points };
 };
 
 function boxEffectsText(box) {
@@ -610,8 +653,8 @@ function send() {
   syncTime();
   const q = quality();
   const r = rewardFor(q, state.active);
-  const itemRewardResult = r.item ? itemRewardHtml(state.active, true)
-    : `<div>Keine Itembelohnung – benötigt: ${Math.round(state.active.itemReward.quality * 100)} % Erfüllung und mindestens ein eingepacktes Item.</div>`;
+  const itemRewardResult = r.earned ? itemRewardHtml(state.active, true)
+    : `<div>Keine ${state.active.itemReward.item ? 'Item' : 'Rohstoff'}belohnung – benötigt: ${Math.round(state.active.itemReward.quality * 100)} % Erfüllung und mindestens ein eingepacktes Item.</div>`;
   const previousLevel = progression().level;
   const repayment = Math.min(state.debt, r.gold);
   state.debt -= repayment;
@@ -625,6 +668,7 @@ function send() {
        ).join('')}</ul>`
     : '';
   if (r.item) state.inventory[r.item.id] = (state.inventory[r.item.id] || 0) + 1;
+  if (r.material) state.materials[r.material.id] += r.material.amount;
   const bonuses = changeStreak(r.points);
   sfx.play(bonuses.length ? 'checkpoint' : newLevel > previousLevel ? 'level' : 'send');
   state.box = [];
@@ -694,12 +738,15 @@ function needsHtml(c, t) {
 }
 
 function itemRewardHtml(c, earned = null) {
-  const { item, quality } = c.itemReward;
+  const { item, material, quality } = c.itemReward;
   const threshold = Math.round(quality * 100);
-  const description = `1 ${item.name} ab ${threshold} % Boxqualität${earned === true ? ' – erreicht' : ''} · ${ITEM_RARITIES[item.rarity].label} · ${statsText(item.stats)}`;
-  return `<span class="reward-offer item-rarity-${item.rarity}${earned === true ? ' earned' : ''}" role="img" aria-label="${description}" title="${description}">
-    <span class="reward-icon" aria-hidden="true">${item.icon}</span>
-    <span>${earned === true ? '✓ ' : ''}Reward</span>
+  const resource = material && MATERIALS[material.id];
+  const description = item
+    ? `1 ${item.name} ab ${threshold} % Boxqualität${earned === true ? ' – erreicht' : ''} · ${ITEM_RARITIES[item.rarity].label} · ${statsText(item.stats)}`
+    : `${material.amount} ${resource.name} ab ${threshold} % Boxqualität${earned === true ? ' – erreicht' : ''}`;
+  return `<span class="reward-offer item-rarity-${item ? item.rarity : 'common'}${earned === true ? ' earned' : ''}" role="img" aria-label="${description}" title="${description}">
+    <span class="reward-icon" aria-hidden="true">${item ? item.icon : `${resource.icon} ×${material.amount}`}</span>
+    <span>${earned === true ? '✓ ' : ''}${material ? resource.name : 'Reward'}</span>
     <span class="reward-threshold">ab ${threshold} %</span>
   </span>`;
 }
@@ -765,7 +812,7 @@ function render() {
   $('restockHint').textContent = `${RESTOCK_SIZE} zufällige Basis-Items: kleiner Heiltrank, Kurzschwert, Holzschild oder Zauberstab. Mindestens zwei Attribute. Fehlendes Gold wird als Vorschuss mit künftigen Goldbelohnungen verrechnet. ${state.debt ? 'Kein weiterer Vorschuss, bis die offene Gebühr bezahlt ist.' : ''}`;
 
   $('customer').innerHTML = c
-    ? `<div class="cust-name r-${c.rarity} tier-${c.tier}">${c.icon} ${c.name} <small>${c.cls} · ${c.tierLabel} · ${RARITY[c.rarity].label}</small></div>` + needsHtml(c, totals()) + itemRewardHtml(c, !!rewardFor(quality(), c).item)
+    ? `<div class="cust-name r-${c.rarity} tier-${c.tier}">${c.icon} ${c.name} <small>${c.cls} · ${c.tierLabel} · ${RARITY[c.rarity].label}</small></div>` + needsHtml(c, totals()) + itemRewardHtml(c, rewardFor(quality(), c).earned)
     : '<div class="empty">Wähle einen Kunden aus der Liste</div>';
   $('selectionCustomer').innerHTML = c
     ? `<div class="cust-name r-${c.rarity} tier-${c.tier}">${c.icon} ${c.name} <small>${c.cls} · ${c.tierLabel} · ${RARITY[c.rarity].label}</small></div>` + needsHtml(c, {}) + itemRewardHtml(c)
@@ -790,7 +837,7 @@ function render() {
       <span class="item-cost">Shopwert: ${itemCost} 💰 (ohne Rabatt; Belohnungsitems sind gratis)</span>
       <span class="net-gold${netGold < 0 ? ' loss' : ''}"> · Gegenwert-Differenz: ${netGold >= 0 ? '+' : ''}${netGold} 💰</span>
       ${repayment ? `<br>Davon Vorschuss-Rückzahlung: ${repayment} Gold (in der Differenz berücksichtigt)` : ''}<br>
-      ${itemRewardHtml(c, !!r.item)}<div class="streak-preview">+${CUSTOMER_TIERS.find(tier => tier.id === c.tier).points} Serienpunkte bei Reward</div>`;
+      ${itemRewardHtml(c, r.earned)}<div class="streak-preview">+${CUSTOMER_TIERS.find(tier => tier.id === c.tier).points} Serienpunkte bei Reward</div>`;
   } else {
     $('preview').textContent = '';
   }
@@ -824,6 +871,7 @@ function render() {
   renderInventory();
   renderPicker();
   renderQueue();
+  renderWorkshop();
   const orderDialog = $('orderDialog');
   $('boxSelection').hidden = !c || !!state.boxType;
   $('packingView').hidden = !c || !state.boxType;
@@ -866,7 +914,71 @@ function renderPicker() {
   $('pickInfo').textContent = state.boxType ? state.boxType.name : '';
 }
 
+function startCraft(id) {
+  const recipe = RECIPES.find(entry => entry.item === id);
+  if (!recipe || !isUnlocked(recipe) || !workshopCapacity() || state.crafts.length >= workshopCapacity()
+    || !Object.entries(recipe.materials).every(([material, amount]) => state.materials[material] >= amount)) return;
+  syncTime();
+  for (const [material, amount] of Object.entries(recipe.materials)) state.materials[material] -= amount;
+  state.crafts.push({ item: recipe.item, finishAt: lastUpdatedAt + craftDuration(recipe) });
+  sfx.play('select');
+  render();
+}
+
+function collectCraft(index) {
+  const craft = state.crafts[index];
+  if (!craft || Math.max(Date.now(), lastUpdatedAt) < craft.finishAt) return;
+  state.inventory[craft.item] = (state.inventory[craft.item] || 0) + 1;
+  state.crafts.splice(index, 1);
+  sfx.play('checkout');
+  render();
+}
+
+function renderWorkshop() {
+  const level = progression().level;
+  const slots = workshopCapacity(level);
+  const now = Math.max(Date.now(), lastUpdatedAt);
+  const ready = state.crafts.filter(craft => craft.finishAt <= now).length;
+  $('openWorkshop').disabled = slots === 0;
+  $('workshopSummary').textContent = slots
+    ? `${state.crafts.length}/${slots} Plätze belegt${ready ? ` · ${ready} abholbereit` : ''}`
+    : `Ab Level ${WORKSHOP_LEVEL} freigeschaltet`;
+  const materialsText = Object.entries(MATERIALS)
+    .map(([id, material]) => `${material.icon} ${material.name}: ${state.materials[id]}`).join(' · ');
+  $('homeMaterials').textContent = materialsText;
+  if (!$('workshopDialog').open) return;
+  $('workshopMaterials').textContent = materialsText;
+  $('craftSlots').innerHTML = Array.from({ length: slots }, (_, i) => {
+    const craft = state.crafts[i];
+    if (!craft) return `<div class="workshop-row">Platz ${i + 1}: Frei</div>`;
+    const item = ITEMS.find(entry => entry.id === craft.item);
+    const minutes = Math.ceil(Math.max(0, craft.finishAt - now) / 60000);
+    return `<div class="workshop-row"><span>${item.icon} ${item.name}<small>${minutes ? `Noch ${minutes} Min.` : 'Fertig – wartet auf Abholung'}</small></span>
+      <button class="secondary collect-craft" data-index="${i}" ${minutes ? 'disabled' : ''}>Abholen</button></div>`;
+  }).join('');
+  $('craftSlots').querySelectorAll('.collect-craft').forEach(button => button.onclick = () => collectCraft(+button.dataset.index));
+  $('recipes').innerHTML = RECIPES.map(recipe => {
+    const item = ITEMS.find(entry => entry.id === recipe.item);
+    const unlocked = recipe.level <= level;
+    const enough = Object.entries(recipe.materials).every(([id, amount]) => state.materials[id] >= amount);
+    const costs = Object.entries(recipe.materials).map(([id, amount]) => `${MATERIALS[id].icon} ${amount} ${MATERIALS[id].name}`).join(' · ');
+    return `<div class="workshop-row"><span>${item.icon} ${itemNameHtml(item)}<small>${statsText(item.stats)}</small>
+      <small>${costs} · ${craftDuration(recipe, level) / 60000} Min.${unlocked ? '' : ` · Ab Level ${recipe.level}`}</small></span>
+      <button class="secondary start-craft" data-item="${item.id}" ${!unlocked || !enough || state.crafts.length >= slots ? 'disabled' : ''}>Herstellen</button></div>`;
+  }).join('');
+  $('recipes').querySelectorAll('.start-craft').forEach(button => button.onclick = () => startCraft(button.dataset.item));
+}
+
+function openWorkshop() {
+  if (!workshopCapacity() || state.shopping || state.showingResult || state.active) return;
+  syncTime();
+  $('workshopDialog').showModal();
+  renderWorkshop();
+}
+
 $('send').onclick = send;
+$('openWorkshop').onclick = openWorkshop;
+$('closeWorkshop').onclick = () => $('workshopDialog').close();
 $('backToBoxes').onclick = backToBoxes;
 $('backToCustomers').onclick = backToCustomers;
 $('orderDialog').addEventListener('cancel', event => {
@@ -893,6 +1005,7 @@ if (!loadGame()) {
 render();
 document.addEventListener('visibilitychange', () => {
   syncTime();
+  renderWorkshop();
   saveGame();
 });
 window.addEventListener('pagehide', () => {
@@ -906,5 +1019,14 @@ window.addEventListener('storage', event => {
 });
 setInterval(() => {
   syncTime();
+  if ($('workshopDialog').open && !document.hidden) {
+    const focused = document.activeElement;
+    const selector = focused?.classList.contains('start-craft') ? `.start-craft[data-item="${focused.dataset.item}"]`
+      : focused?.classList.contains('collect-craft') ? `.collect-craft[data-index="${focused.dataset.index}"]` : null;
+    renderWorkshop();
+    if (selector) $('workshopDialog').querySelector(selector)?.focus();
+  } else {
+    renderWorkshop();
+  }
   saveGame();
 }, 10000);
