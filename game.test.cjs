@@ -89,7 +89,7 @@ test('box and customer switches return items; sending consumes only packed items
   assert.equal(run('state.box.length'), 0);
   assert.equal(run('state.inventory.pot1'), 2);
   assert.equal(run('state.gold'), 490);
-  run("chooseBox('small'); packItem('pot1'); state.active.itemRewards = []; globalThis.expectedGold = state.gold + rewardFor(quality(), state.active).gold; send();");
+  run("chooseBox('small'); packItem('pot1'); state.active.needs = [{attr:'magic', target:15, prio:1}]; globalThis.expectedGold = state.gold + rewardFor(quality(), state.active).gold; send();");
   assert.equal(run('state.gold'), run('expectedGold'));
   assert.equal(run('state.inventory.pot1'), 1);
   assert.equal(run('state.box.length'), 0);
@@ -98,18 +98,43 @@ test('box and customer switches return items; sending consumes only packed items
   assert.equal(run('state.gold'), run('expectedGold'));
 });
 
-test('item reward thresholds respect rarity and upgrade rather than accumulate', () => {
+test('each customer offers one fixed reward only at its tier threshold, with increasingly valuable items', () => {
   const run = createShoppingGame();
-  for (const [tier, rarity, levels] of [['wannabe', 'common', 1], ['adventurer', 'common', 1], ['hero', 'rare', 2], ['demigod', 'epic', 3]]) {
+  let previousMaxCost = 0;
+  for (const [tier, threshold] of [['wannabe', 0.5], ['adventurer', 0.7], ['hero', 0.85], ['demigod', 1]]) {
     run(`globalThis.rollCustomerTier = () => CUSTOMER_TIERS.find(t => t.id === '${tier}'); globalThis.customer = generateCustomer();`);
-    assert.equal(run('customer.itemRewards.length'), levels);
+    assert.equal(run('customer.itemReward.quality'), threshold);
     assert.equal(run('rewardFor(0, customer, true).item'), null);
-    assert.equal(run('rewardFor(0.299999, customer, true).item'), null);
-    for (let i = 0; i < levels; i++) {
-    assert.equal(run(`rewardFor(customer.itemRewards[${i}].quality, customer, true).item.id`),
-        run(`customer.itemRewards[${i}].item.id`));
-    }
-    assert.equal(run('rewardFor(1, customer, true).item.id'), run(`customer.itemRewards[${levels - 1}].item.id`));
+    assert.equal(run(`rewardFor(${threshold - 0.000001}, customer, true).item`), null);
+    assert.equal(run(`rewardFor(${threshold}, customer, true).item.id`), run('customer.itemReward.item.id'));
+    assert.equal(run('rewardFor(1, customer, true).item.id'), run('customer.itemReward.item.id'));
+    assert.equal(run('rewardFor(1, customer, false).item'), null);
+    assert.ok(run('Math.min(...ITEMS.filter(item => CUSTOMER_TIERS.find(tier => tier.id === customer.tier).reward.ids.includes(item.id)).map(item => item.cost))') > previousMaxCost);
+    previousMaxCost = run('Math.max(...ITEMS.filter(item => CUSTOMER_TIERS.find(tier => tier.id === customer.tier).reward.ids.includes(item.id)).map(item => item.cost))');
+  }
+});
+
+test('sending at each tier threshold consumes the box and awards exactly one item', () => {
+  for (const [tier, target, items] of [
+    ['wannabe', 20, ['pot1']],
+    ['adventurer', 50, ['pot2', 'pot1']],
+    ['hero', 100, ['pot3', 'pot2', 'pot1']],
+    ['demigod', 50, ['pot3']],
+  ]) {
+    const run = createShoppingGame();
+    run(`globalThis.rollCustomerTier = () => CUSTOMER_TIERS.find(t => t.id === '${tier}');
+      state.queue = [generateCustomer()];
+      for (const id of ${JSON.stringify(items)}) addToCart(id);
+      checkout(); finishShopping(); selectCustomer(state.queue[0].id);
+      state.active.needs = [{attr:'hp', target:${target}, prio:1}];
+      chooseBox('small');
+      for (const id of ${JSON.stringify(items)}) packItem(id);
+      globalThis.rewardId = state.active.itemReward.item.id;`);
+    assert.equal(run('quality()'), run('state.active.itemReward.quality'));
+    run('send(); send();');
+    assert.equal(run('state.inventory[rewardId]'), 1);
+    assert.equal(run('Object.values(state.inventory).reduce((a, b) => a + b, 0)'), 1);
+    assert.match(run("$('result').innerHTML"), /✓ Reward/);
   }
 });
 
@@ -123,15 +148,43 @@ test('advertised reward stays fixed and sending grants exactly one item once', (
     chooseBox('small');
     packItem('pot1');
     globalThis.rewardId = rewardFor(quality(), state.active).item.id;
-    globalThis.offer = JSON.stringify(state.active.itemRewards);
+    globalThis.offer = JSON.stringify(state.active.itemReward);
     render(); render();`);
-  assert.equal(run('JSON.stringify(state.active.itemRewards)'), run('offer'));
-  assert.match(run("$('preview').innerHTML"), /Itembelohnung: \+1/);
+  assert.equal(run('JSON.stringify(state.active.itemReward)'), run('offer'));
+  assert.match(run("$('preview').innerHTML"), /✓ Reward/);
+  assert.match(run("$('preview').innerHTML"), /ab 100 %/);
+  assert.doesNotMatch(run("$('preview').innerHTML"), /höchste erreichte Stufe|ab 30%/);
   run('send()');
   assert.equal(run('state.inventory[rewardId]'), 1);
   assert.equal(run('Object.values(state.inventory).reduce((a, b) => a + b, 0)'), 1);
   run('send()');
   assert.equal(run('state.inventory[rewardId]'), 1);
+});
+
+test('reward badges show the item icon and threshold and results explain the unmet tier requirement', () => {
+  const run = createShoppingGame();
+  run(`globalThis.rollCustomerTier = () => CUSTOMER_TIERS.find(t => t.id === 'hero');
+    state.queue = [generateCustomer()]; finishShopping(); selectCustomer(state.queue[0].id); chooseBox('small');`);
+  assert.match(run("$('customer').innerHTML"), /class="reward-icon"[^>]*>🥋/);
+  assert.match(run("$('customer').innerHTML"), /ab 85 %/);
+  assert.match(run("$('customer').innerHTML"), /aria-label="1 Plattenrüstung ab 85 % Boxqualität"/);
+  assert.doesNotMatch(run("$('customer').innerHTML"), /✓ Reward|höchste erreichte Stufe/);
+  run('send()');
+  assert.match(run("$('result').innerHTML"), /Keine Itembelohnung – benötigt: 85 %/);
+  assert.equal(run('Object.values(state.inventory).reduce((a, b) => a + b, 0)'), 0);
+});
+
+test('quality shown just below a reward threshold does not round up and promise an unearned item', () => {
+  const run = createGame();
+  run(`selectCustomer(state.queue[0].id); chooseBox('small');
+    state.active.needs = [{attr:'hp', target:20.01, prio:1}];
+    packItem('pot1');`);
+  assert.match(run("$('preview').innerHTML"), /Aktuell: 49%/);
+  assert.doesNotMatch(run("$('preview').innerHTML"), /✓ Reward/);
+  run('send()');
+  assert.match(run("$('result').innerHTML"), /Erfüllung: 49%/);
+  assert.match(run("$('result').innerHTML"), /Keine Itembelohnung – benötigt: 50 %/);
+  assert.equal(run('Object.values(state.inventory).reduce((a, b) => a + b, 0)'), 19);
 });
 
 test('empty or irrelevant boxes grant no items', () => {
@@ -391,7 +444,7 @@ test('generated customers and reward items obey level gates and increased queue 
     run(`state.exp = expForLevel(${level});`);
     assert.equal(run(`Array.from({length: 100}, () => generateCustomer()).every(customer =>
       CUSTOMER_TIERS.find(tier => tier.id === customer.tier).level <= progression().level &&
-      customer.itemRewards.every(reward => isUnlocked(reward.item)))`), true);
+      isUnlocked(customer.itemReward.item))`), true);
   }
   run('state.exp = 0; globalThis.beforeTime = state.queue[0].timeLeft; openRoadmap(); tick(1);');
   assert.equal(run('state.queue[0].timeLeft'), run('beforeTime'));

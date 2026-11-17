@@ -91,16 +91,15 @@ const MERCHANT_INTERVAL = 5;
 const RESTOCK_COST = 20;
 const RESTOCK_SIZE = 3;
 const RESTOCK_IDS = ['pot1', 'dag', 'shield', 'wand'];
-const ITEM_REWARDS = [
-  { quality: 0.3, rarities: ['common', 'rare', 'epic'], ids: ['pot1', 'dag', 'shield', 'wand'] },
-  { quality: 0.6, rarities: ['rare', 'epic'], ids: ['pot2', 'sword'] },
-  { quality: 0.9, rarities: ['epic'], ids: ['pot3', 'plate'] },
-];
 const CUSTOMER_TIERS = [
-  { id: 'wannabe', label: 'Wannabe', level: 1, weight: 50, scale: 0.6, rarity: 'common', time: 120 },
-  { id: 'adventurer', label: 'Abenteurer', level: 2, weight: 32, scale: 1, rarity: 'common', time: 90 },
-  { id: 'hero', label: 'Held', level: 5, weight: 15, scale: 1.2, rarity: 'rare', time: 75 },
-  { id: 'demigod', label: 'Demi-Gott', level: 7, weight: 3, scale: 1.5, rarity: 'epic', time: 60 },
+  { id: 'wannabe', label: 'Wannabe', level: 1, weight: 50, scale: 0.6, rarity: 'common', time: 120,
+    reward: { quality: 0.5, ids: ['pot1', 'dag', 'shield', 'wand'] } },
+  { id: 'adventurer', label: 'Abenteurer', level: 2, weight: 32, scale: 1, rarity: 'common', time: 90,
+    reward: { quality: 0.7, ids: ['pot2', 'sword'] } },
+  { id: 'hero', label: 'Held', level: 5, weight: 15, scale: 1.2, rarity: 'rare', time: 75,
+    reward: { quality: 0.85, ids: ['plate'] } },
+  { id: 'demigod', label: 'Demi-Gott', level: 7, weight: 3, scale: 1.5, rarity: 'epic', time: 60,
+    reward: { quality: 1, ids: ['pot3'] } },
 ];
 
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
@@ -163,12 +162,11 @@ function generateCustomer() {
   }[tier.id];
   const base = pick(classes);
   const needs = base.needs.map(n => ({ ...n, target: Math.max(5, Math.round(n.target * tier.scale * (0.8 + Math.random() * 0.4) / 5) * 5) }));
-  const itemRewards = ITEM_REWARDS.filter(tier => tier.rarities.includes(rarity) && tier.ids.some(id => isUnlocked(ITEMS.find(item => item.id === id))))
-    .map(tier => {
-      const id = pick(tier.ids.filter(id => isUnlocked(ITEMS.find(item => item.id === id))));
-      return { quality: tier.quality, item: ITEMS.find(it => it.id === id) };
-    });
-  return { id: nextId++, name: pick(NAMES), cls: base.cls, icon: base.icon, needs, rarity, tier: tier.id, tierLabel: tier.label, itemRewards, timeLeft: tier.time || def.time, maxTime: tier.time || def.time };
+  const itemReward = {
+    quality: tier.reward.quality,
+    item: pick(ITEMS.filter(item => tier.reward.ids.includes(item.id) && isUnlocked(item))),
+  };
+  return { id: nextId++, name: pick(NAMES), cls: base.cls, icon: base.icon, needs, rarity, tier: tier.id, tierLabel: tier.label, itemReward, timeLeft: tier.time || def.time, maxTime: tier.time || def.time };
 }
 
 const state = {
@@ -203,8 +201,7 @@ function quality() {
 
 const rewardFor = (q, c, hasPackedItems = state.box.length > 0) => {
   const m = RARITY[c.rarity].mult;
-  const eligible = c.itemRewards.filter(reward => q >= reward.quality);
-  const item = hasPackedItems && eligible.length ? eligible[eligible.length - 1].item : null;
+  const item = hasPackedItems && q >= c.itemReward.quality ? c.itemReward.item : null;
   return { gold: Math.round((10 + q * 30) * m), exp: Math.round((5 + q * 15) * m), item };
 };
 
@@ -337,6 +334,8 @@ function send() {
   if (state.shopping || state.showingResult || !state.active || !state.boxType) return;
   const q = quality();
   const r = rewardFor(q, state.active);
+  const itemRewardResult = r.item ? itemRewardHtml(state.active, true)
+    : `<div>Keine Itembelohnung – benötigt: ${Math.round(state.active.itemReward.quality * 100)} % Erfüllung und mindestens ein eingepacktes Item.</div>`;
   const previousLevel = progression().level;
   const repayment = Math.min(state.debt, r.gold);
   state.debt -= repayment;
@@ -362,11 +361,11 @@ function send() {
   const label = q >= 0.9 ? 'Perfekt!' : q >= 0.6 ? 'Gut' : q >= 0.3 ? 'Geht so' : 'Schlecht';
   $('result').innerHTML = `
     <h1>${label}</h1>
-    <div>Erfüllung: ${Math.round(q * 100)}%</div>
+    <div>Erfüllung: ${Math.floor(q * 100)}%</div>
     <div>💰 +${r.gold} &nbsp; ⭐ +${r.exp}</div>
     ${levelUp}
     ${repayment ? `<div>Vorschuss-Rückzahlung: −${repayment} Gold · Ausgezahlt: ${r.gold - repayment} Gold</div>` : ''}
-    <div>${r.item ? `Inventar: +1 ${r.item.icon} ${r.item.name}` : 'Keine Itembelohnung (ab 30% Erfüllung)'}</div>
+    ${itemRewardResult}
     <button class="primary" id="next">${state.shopping ? 'Zum Händler' : 'Weiter'}</button>`;
   render();
   $('result').classList.remove('hidden');
@@ -415,10 +414,15 @@ function needsHtml(c, t) {
   }).join('');
 }
 
-function itemRewardsHtml(c) {
-  return `<span class="reward-offer">Itembelohnung (1 Item): ${c.itemRewards.map(reward =>
-    `ab ${Math.round(reward.quality * 100)}%: ${reward.item.icon} ${reward.item.name}`
-  ).join(' · ')}. Die höchste erreichte Stufe zählt.</span>`;
+function itemRewardHtml(c, earned = null) {
+  const { item, quality } = c.itemReward;
+  const threshold = Math.round(quality * 100);
+  const description = `1 ${item.name} ab ${threshold} % Boxqualität${earned === true ? ' – erreicht' : ''}`;
+  return `<span class="reward-offer${earned === true ? ' earned' : ''}" role="img" aria-label="${description}" title="${description}">
+    <span class="reward-icon" aria-hidden="true">${item.icon}</span>
+    <span>${earned === true ? '✓ ' : ''}Reward</span>
+    <span class="reward-threshold">ab ${threshold} %</span>
+  </span>`;
 }
 
 function renderQueue() {
@@ -427,7 +431,8 @@ function renderQueue() {
     const m = RARITY[c.rarity].mult;
     return `<button class="queue-item r-${c.rarity} tier-${c.tier}" data-cid="${c.id}" ${state.shopping || state.showingResult ? 'disabled' : ''}>
       <span class="ico">${c.icon}</span>
-      <span class="txt">${c.name} <small>${c.cls} · ${c.tierLabel}</small><span class="needs">${needs}</span>${itemRewardsHtml(c)}</span>
+      <span class="txt">${c.name} <small>${c.cls} · ${c.tierLabel}</small><span class="needs">${needs}</span></span>
+      ${itemRewardHtml(c)}
       <span class="mult">${m > 1 ? '×' + m : ''}</span>
       <span class="secs">${Math.ceil(c.timeLeft)}s</span>
       <span class="timer"><div style="width:${Math.max(0, c.timeLeft / c.maxTime * 100)}%"></div></span>
@@ -467,7 +472,7 @@ function render() {
   $('restockHint').textContent = `${RESTOCK_SIZE} zufällige Basis-Items: kleiner Heiltrank, Kurzschwert, Holzschild oder Zauberstab. Mindestens zwei Attribute. Fehlendes Gold wird als Vorschuss mit künftigen Goldbelohnungen verrechnet. ${state.debt ? 'Kein weiterer Vorschuss, bis die offene Gebühr bezahlt ist.' : ''}`;
 
   $('customer').innerHTML = c
-    ? `<div class="cust-name r-${c.rarity} tier-${c.tier}">${c.icon} ${c.name} <small>${c.cls} · ${c.tierLabel} · ${RARITY[c.rarity].label}</small></div>` + needsHtml(c, totals()) + itemRewardsHtml(c)
+    ? `<div class="cust-name r-${c.rarity} tier-${c.tier}">${c.icon} ${c.name} <small>${c.cls} · ${c.tierLabel} · ${RARITY[c.rarity].label}</small></div>` + needsHtml(c, totals()) + itemRewardHtml(c, !!rewardFor(quality(), c).item)
     : '<div class="empty">Wähle einen Kunden aus der Liste</div>';
 
   const used = usedSlots();
@@ -485,11 +490,11 @@ function render() {
     const itemCost = state.box.reduce((sum, item) => sum + item.cost, 0);
     const repayment = Math.min(state.debt, r.gold);
     const netGold = r.gold - itemCost - repayment;
-    $('preview').innerHTML = `Aktuell: ${Math.round(q * 100)}% → 💰 ${r.gold}  ⭐ ${r.exp}<br>
+    $('preview').innerHTML = `Aktuell: ${Math.floor(q * 100)}% → 💰 ${r.gold}  ⭐ ${r.exp}<br>
       <span class="item-cost">Itemkosten: ${itemCost} 💰</span>
       <span class="net-gold${netGold < 0 ? ' loss' : ''}"> · Netto: ${netGold >= 0 ? '+' : ''}${netGold} 💰</span>
       ${repayment ? `<br>Davon Vorschuss-Rückzahlung: ${repayment} Gold (im Netto berücksichtigt)` : ''}<br>
-      ${r.item ? `Itembelohnung: +1 ${r.item.icon} ${r.item.name}` : 'Itembelohnung ab 30% Erfüllung'}`;
+      ${itemRewardHtml(c, !!r.item)}`;
   } else {
     $('preview').textContent = '';
   }
