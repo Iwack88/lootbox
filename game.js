@@ -116,6 +116,7 @@ const CUSTOMER_PLACES = [
   { level: 6, count: 6 },
 ];
 const SPAWN_INTERVAL = 30 * 60;
+const CUSTOMER_RECRUIT_COST = 10;
 const MERCHANT_INTERVAL = 5;
 // Händler vorerst aus dem Spielablauf genommen; Code für eine spätere Rückkehr erhalten.
 const MERCHANT_ENABLED = false;
@@ -962,7 +963,23 @@ function renderQueue() {
   }).join('') : '<div class="empty">Gerade keine Kunden…</div>';
   $('queue').querySelectorAll('.queue-item').forEach(el => el.onclick = () => selectCustomer(+el.dataset.cid));
   $('queueInfo').textContent = `${state.queue.length}/${queueCapacity()}${state.active ? ' · 1 in Bearbeitung' : ''}`;
+  const placesAvailable = state.queue.length + (state.active ? 1 : 0) < queueCapacity();
+  $('recruitCustomer').disabled = state.shopping || state.showingResult || !placesAvailable || state.gold < CUSTOMER_RECRUIT_COST;
+  $('recruitCustomer').textContent = `Kunden anwerben · ${CUSTOMER_RECRUIT_COST} Gold`;
+  $('recruitStatus').textContent = !placesAvailable ? 'Alle Kundenplätze sind belegt.'
+    : state.gold < CUSTOMER_RECRUIT_COST ? `Noch ${CUSTOMER_RECRUIT_COST - state.gold} Gold bis zum nächsten Kunden.`
+    : '';
   updateArrivalStatus();
+}
+
+function recruitCustomer() {
+  const placesAvailable = state.queue.length + (state.active ? 1 : 0) < queueCapacity();
+  if (state.shopping || state.showingResult || !placesAvailable || state.gold < CUSTOMER_RECRUIT_COST) return;
+  state.gold -= CUSTOMER_RECRUIT_COST;
+  state.queue.push(generateCustomer());
+  if (state.queue.length + (state.active ? 1 : 0) >= queueCapacity()) state.spawnT = SPAWN_INTERVAL;
+  sfx.play('arrival');
+  render();
 }
 
 function updateArrivalStatus() {
@@ -1335,6 +1352,7 @@ function openSupply() {
 }
 
 $('send').onclick = send;
+$('recruitCustomer').onclick = recruitCustomer;
 $('openSupply').onclick = openSupply;
 $('packingSupply').onclick = openSupply;
 $('closeSupply').onclick = () => $('supplyDialog').close();

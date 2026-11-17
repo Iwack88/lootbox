@@ -122,6 +122,33 @@ function createMilestoneGame(options = {}) {
   return createOrderingGame({ ...options, legacyStreak: false });
 }
 
+test('customers can be recruited for 10 gold only when a queue place and enough gold are available', () => {
+  const storage = new Map();
+  const run = createMilestoneGame({ storage });
+  assert.equal(run("$('recruitCustomer').disabled"), true);
+  assert.match(run("$('recruitStatus').textContent"), /Alle Kundenplätze sind belegt/);
+  run('state.gold = 9; render()');
+  assert.equal(run("$('recruitCustomer').disabled"), true);
+  run('state.queue.pop(); state.spawnT = 23; render()');
+  assert.equal(run("$('recruitCustomer').disabled"), true);
+  assert.match(run("$('recruitStatus').textContent"), /Noch 1 Gold/);
+  const before = run('JSON.stringify(state.queue)');
+  run("$('recruitCustomer').onclick()");
+  assert.equal(run('JSON.stringify(state.queue)'), before);
+  assert.equal(run('state.gold'), 9);
+  run('state.gold = 10; render()');
+  assert.equal(run("$('recruitCustomer').disabled"), false);
+  run("$('recruitCustomer').onclick()");
+  assert.equal(run('state.gold'), 0);
+  assert.equal(run('state.queue.length'), 4);
+  assert.equal(run('state.spawnT'), run('SPAWN_INTERVAL'));
+  assert.equal(run('state.queue.every(customer => NAMES.includes(customer.name) && CUSTOMER_TIERS.some(tier => tier.id === customer.tier))'), true);
+  assert.equal(run("$('recruitCustomer').disabled"), true);
+  const reloaded = createMilestoneGame({ storage });
+  assert.equal(reloaded('state.gold'), 0);
+  assert.equal(reloaded('state.queue.length'), 4);
+});
+
 test('individual slots select icons for details, retain their positions after reload and return removed items', () => {
   const storage = new Map();
   const run = createMilestoneGame({ storage });
