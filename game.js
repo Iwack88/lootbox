@@ -336,9 +336,10 @@ let savingBlocked = false;
 let storageError = '';
 
 function showSaveStatus(message, error = false) {
-  for (const id of ['saveStatus', 'orderSaveStatus', 'shopSaveStatus', 'workshopSaveStatus', 'supplySaveStatus']) {
+  for (const id of ['saveStatus', 'saveAlert', 'orderSaveStatus', 'shopSaveStatus', 'workshopSaveStatus', 'supplySaveStatus']) {
     if ($(id).textContent !== message) $(id).textContent = message;
     $(id).classList.toggle('error', error);
+    $(id).hidden = id !== 'saveStatus' && !error;
   }
 }
 
@@ -346,6 +347,24 @@ function storageFailure(message, error) {
   if (storageError !== message) console.error(message, error);
   storageError = message;
   showSaveStatus(message, true);
+}
+
+function resetGame() {
+  if (!confirm('Spielstand wirklich unwiderruflich löschen? Alle Items, Aufträge und Fortschritte gehen verloren. Du beginnst wieder bei Level 1.')) return;
+  const wasBlocked = savingBlocked;
+  // Auch pagehide darf den gelöschten Spielstand beim Neuladen nicht wiederherstellen.
+  savingBlocked = true;
+  try {
+    localStorage.removeItem(SAVE_KEY);
+  } catch (error) {
+    savingBlocked = wasBlocked;
+    const message = 'Zurücksetzen fehlgeschlagen. Dein Spielstand wurde nicht gelöscht. Erlaube lokalen Browser-Speicher und versuche es erneut.';
+    $('resetMessage').textContent = message;
+    $('resetMessage').hidden = false;
+    storageFailure(message, error);
+    return;
+  }
+  window.location.reload();
 }
 
 function savedCustomer(customer) {
@@ -1265,12 +1284,14 @@ $('finishShopping').onclick = finishShopping;
 $('checkout').onclick = checkout;
 $('shopDialog').addEventListener('cancel', event => event.preventDefault());
 $('restock').onclick = emergencyRestock;
+$('openOptions').onclick = () => $('optionsDialog').showModal();
+$('closeOptions').onclick = () => $('optionsDialog').close();
+$('resetGame').onclick = resetGame;
 function openRoadmap(selected = null) {
   renderRoadmap(selected);
   $('roadmapDialog').showModal();
   if (Number.isInteger(selected)) $(`level-milestone-${selected}`).focus();
 }
-$('showRoadmap').onclick = () => openRoadmap();
 $('shopRoadmap').onclick = () => openRoadmap();
 $('closeRoadmap').onclick = () => $('roadmapDialog').close();
 $('showStreak').onclick = () => openStreak();

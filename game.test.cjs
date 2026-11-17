@@ -13,6 +13,7 @@ function createGame(options = {}) {
     Date: class extends Date { static now() { return options.now ? options.now() : 1_700_000_000_000; } },
     window: {
       listeners: {},
+      location: { reload() { this.reloaded = true; } },
       addEventListener(type, listener) { this.listeners[type] = listener; },
     },
     intervals,
@@ -45,6 +46,7 @@ function createGame(options = {}) {
     localStorage: options.localStorage || {
       getItem: key => storage.get(key) ?? null,
       setItem: (key, value) => storage.set(key, value),
+      removeItem: key => storage.delete(key),
     },
     confirm: options.confirm || (() => true),
     performance: { now: () => 0 },
@@ -118,6 +120,76 @@ function createOrderingGame(options = {}) {
 function createMilestoneGame(options = {}) {
   return createOrderingGame({ ...options, legacyStreak: false });
 }
+
+test('options open and close without changing progress, and normal save messages stay inside options', () => {
+  const run = createMilestoneGame();
+  const saved = run('JSON.stringify(state)');
+  run("$('openOptions').onclick()");
+  assert.equal(run("$('optionsDialog').open"), true);
+  assert.match(run("$('saveStatus').textContent"), /Automatisch lokal gespeichert/);
+  assert.equal(run("$('saveStatus').hidden"), false);
+  for (const id of ['saveAlert', 'orderSaveStatus', 'shopSaveStatus', 'workshopSaveStatus', 'supplySaveStatus']) {
+    assert.equal(run(`$('${id}').hidden`), true);
+  }
+  run("$('closeOptions').onclick()");
+  assert.equal(run("$('optionsDialog').open"), false);
+  assert.equal(run('JSON.stringify(state)'), saved);
+});
+
+test('canceling reset preserves the save and accepting resets only this game without pagehide recreating it', () => {
+  let accept = false;
+  const storage = new Map([['soundEnabled', '0'], ['unrelated', 'keep']]);
+  const run = createMilestoneGame({ storage, confirm: () => accept });
+  run(`state.exp = expForLevel(10); state.gold = 1000; state.materials.cloth = 4;
+    startCraft('bandage'); placeOrder('bandage',2);
+    selectCustomer(state.queue[0].id); chooseBox('medium'); packItem('pot1');`);
+  const key = run('SAVE_KEY');
+  const saved = storage.get(key);
+  run("$('resetGame').onclick()");
+  assert.equal(storage.get(key), saved);
+  assert.notEqual(run('window.location.reloaded'), true);
+  assert.equal(run('savingBlocked'), false);
+  accept = true;
+  run("$('resetGame').onclick(); window.listeners.pagehide(); render(); intervals[0]()");
+  assert.equal(run('window.location.reloaded'), true);
+  assert.equal(storage.has(key), false);
+  assert.equal(storage.get('soundEnabled'), '0');
+  assert.equal(storage.get('unrelated'), 'keep');
+  const fresh = createMilestoneGame({ storage });
+  assert.equal(fresh('state.exp'), 0);
+  assert.equal(fresh('state.orders.length + state.crafts.length + state.box.length'), 0);
+  assert.equal(fresh('state.active'), null);
+  assert.equal(fresh('JSON.stringify(state.inventory)'), createMilestoneGame()('JSON.stringify(state.inventory)'));
+});
+
+test('reset can recover a corrupt save and reports deletion failures without reloading or unblocking stale saves', () => {
+  const storage = new Map([['lootboxPacker.save', '{broken']]);
+  const broken = createMilestoneGame({ storage, console: { error() {} } });
+  assert.equal(broken('savingBlocked'), true);
+  broken("$('resetGame').onclick()");
+  assert.equal(storage.has(broken('SAVE_KEY')), false);
+  assert.equal(createMilestoneGame({ storage })('savingBlocked'), false);
+  for (const blocked of [false, true]) {
+    const errors = [];
+    const failed = createMilestoneGame({
+      console: { error: (...args) => errors.push(args) },
+      localStorage: {
+        getItem: key => storage.get(key) ?? null,
+        setItem: (key, value) => storage.set(key, value),
+        removeItem() { throw new Error('Storage denied'); },
+      },
+    });
+    const saved = storage.get(failed('SAVE_KEY'));
+    failed(`savingBlocked = ${blocked}; $('resetGame').onclick()`);
+    assert.equal(failed('savingBlocked'), blocked);
+    assert.notEqual(failed('window.location.reloaded'), true);
+    assert.equal(storage.get(failed('SAVE_KEY')), saved);
+    assert.equal(failed("$('resetMessage').hidden"), false);
+    assert.match(failed("$('resetMessage').textContent"), /Zurücksetzen fehlgeschlagen/);
+    assert.equal(failed("$('saveAlert').hidden"), false);
+    assert.equal(errors.length, 1);
+  }
+});
 
 test('the reused milestone track always shows the next five levels with working detail buttons', () => {
   const run = createMilestoneGame();
@@ -813,10 +885,14 @@ test('storage access and write failures are visible, and writing resumes after s
   run("selectCustomer(state.queue[0].id); chooseBox('small'); packItem('pot1')");
   assert.equal(run('state.box.length'), 1);
   assert.match(run("$('saveStatus').textContent"), /Speichern fehlgeschlagen/);
+  assert.equal(run("$('saveAlert').hidden"), false);
+  assert.equal(run("$('orderSaveStatus').hidden"), false);
   assert.equal(errors.length, 1);
   unavailable = false;
   run('render()');
   assert.match(run("$('saveStatus').textContent"), /Automatisch lokal gespeichert/);
+  assert.equal(run("$('saveAlert').hidden"), true);
+  assert.equal(run("$('orderSaveStatus').hidden"), true);
   assert.equal(createGame({ storage })('state.box.length'), 1);
   let writes = 0;
   const denied = createGame({

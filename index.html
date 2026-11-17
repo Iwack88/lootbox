@@ -6,14 +6,13 @@
 <meta name="theme-color" content="#1b1a2e">
 <meta http-equiv="Cache-Control" content="no-cache">
 <title>Lootbox Packer</title>
-<link rel="stylesheet" href="style.css?v=27">
+<link rel="stylesheet" href="style.css?v=28">
 </head>
 <body>
 <header>
   <span>💰 <b id="gold">0</b></span>
   <span>⭐ Level <b id="level">1</b></span>
-  <button id="showRoadmap" class="secondary">Milestones</button>
-  <button id="soundToggle" class="secondary sound-toggle" aria-pressed="true">🔊 Ton an</button>
+  <button id="openOptions" class="secondary" aria-haspopup="dialog" aria-controls="optionsDialog">Optionen</button>
   <section class="streak-status" aria-label="Level-Meilensteine">
     <div class="streak-heading"><span>⭐ Meilensteine · Level <b id="streakPoints">1</b></span><button id="showStreak" class="secondary" aria-haspopup="dialog" aria-controls="roadmapDialog">Alle ansehen</button></div>
     <div class="streak-track">
@@ -25,15 +24,12 @@
     <span id="streakDiscounts"></span>
   </section>
 </header>
-<p id="soundStatus" class="hint" role="status" hidden></p>
-<p id="saveStatus" class="hint" role="status"></p>
-<p class="hint">Der Spielstand liegt nur in diesem Browser. Beim Löschen der Websitedaten geht er verloren.</p>
+<p id="saveAlert" class="hint" role="alert" hidden></p>
 
 <div class="level-status">
   <span>EXP: <b id="exp">0/100</b></span>
   <progress id="levelProgress" max="100" value="0" aria-label="Fortschritt zum nächsten Level"></progress>
 </div>
-<p id="progressionNotice" class="hint" role="status" hidden></p>
 
 <div id="merchantPanel" class="merchant-status" hidden>
   <span id="merchantStatus"></span>
@@ -62,7 +58,7 @@
 </main>
 
 <dialog id="orderDialog" class="order-dialog" aria-labelledby="orderTitle">
-<p id="orderSaveStatus" class="hint" role="status"></p>
+<p id="orderSaveStatus" class="hint" role="status" hidden></p>
 <section id="boxSelection">
   <div class="order-heading">
     <button id="backToCustomers" class="secondary">← Kunden</button>
@@ -119,7 +115,7 @@
     <span>💰 <b id="shopGold">0</b></span>
   </div>
   <p id="shopHint" class="hint"></p>
-  <p id="shopSaveStatus" class="hint" role="status"></p>
+  <p id="shopSaveStatus" class="hint" role="status" hidden></p>
   <p id="shopDiscount" class="hint"></p>
   <div class="shop-links">
     <button id="shopRoadmap" class="secondary">Milestones</button>
@@ -149,7 +145,7 @@
     <h2 id="supplyTitle">Inventar &amp; Bestellungen</h2>
     <button id="closeSupply" class="secondary">Zurück</button>
   </div>
-  <p id="supplySaveStatus" class="hint" role="status"></p>
+  <p id="supplySaveStatus" class="hint" role="status" hidden></p>
   <p>💰 <b id="supplyGold">0</b> Gold</p>
   <p class="hint">Ein Bestellplatz = ein Itemtyp mit wählbarer Menge. Jede Lieferung dauert 30 Minuten, unabhängig von der Menge, und landet automatisch im Inventar – auch offline. Du bezahlst sofort. Preise entsprechen den bisherigen Händlerpreisen (+25 %, aufgerundet). Der Händler pausiert vorerst.</p>
   <p id="supplyDiscount" class="hint"></p>
@@ -167,7 +163,7 @@
     <h2 id="workshopTitle">🔨 Werkstatt</h2>
     <button id="closeWorkshop" class="secondary">Zurück</button>
   </div>
-  <p id="workshopSaveStatus" class="hint" role="status"></p>
+  <p id="workshopSaveStatus" class="hint" role="status" hidden></p>
   <p id="workshopHint" class="hint"></p>
   <p id="workshopMaterials"></p>
   <h3>Herstellungsplätze</h3>
@@ -196,8 +192,32 @@
   <div id="streakRewards"></div>
 </dialog>
 
+<dialog id="optionsDialog" class="merchant-dialog options-dialog" aria-labelledby="optionsTitle">
+  <div class="merchant-heading">
+    <h2 id="optionsTitle">Optionen</h2>
+    <button id="closeOptions" class="secondary">Zurück</button>
+  </div>
+  <section class="options-section" aria-labelledby="audioTitle">
+    <h3 id="audioTitle">Ton</h3>
+    <button id="soundToggle" class="secondary sound-toggle" aria-pressed="true">🔊 Ton an</button>
+    <p id="soundStatus" class="hint" role="status" hidden></p>
+  </section>
+  <section class="options-section" aria-labelledby="saveTitle">
+    <h3 id="saveTitle">Lokaler Spielstand</h3>
+    <p id="saveStatus" class="hint" role="status"></p>
+    <p class="hint">Dein Fortschritt wird automatisch nur in diesem Browser auf diesem Gerät gespeichert, ohne Account oder Online-Synchronisierung. Beim Löschen der Websitedaten geht er verloren.</p>
+    <p id="progressionNotice" class="hint" role="status" hidden></p>
+  </section>
+  <section class="options-section" aria-labelledby="resetTitle">
+    <h3 id="resetTitle">Neustart</h3>
+    <p class="hint">Löscht deinen lokalen Spielstand mit allen Items, Aufträgen und Fortschritten unwiderruflich. Die Ton-Einstellung bleibt erhalten.</p>
+    <button id="resetGame" class="secondary danger">Spielstand zurücksetzen</button>
+    <p id="resetMessage" class="hint error" role="alert" hidden></p>
+  </section>
+</dialog>
+
 <div id="result" class="overlay hidden"></div>
-<script src="sound.js?v=27"></script>
-<script src="game.js?v=27"></script>
+<script src="sound.js?v=28"></script>
+<script src="game.js?v=28"></script>
 </body>
 </html>

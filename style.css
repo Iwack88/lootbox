@@ -78,6 +78,10 @@ small { opacity: .7; font-weight: 400; }
 .level-status progress { width: 100%; accent-color: #6c63ff; }
 header { align-items: center; flex-wrap: wrap; gap: 10px; }
 .secondary { background: #34325c; color: #eee; border: 1px solid #6c63ff; border-radius: 9px; font: inherit; font-size: 14px; padding: 8px 12px; cursor: pointer; touch-action: manipulation; }
+.options-dialog { max-width: 480px; }
+.options-section + .options-section { border-top: 1px solid #3a3860; margin-top: 20px; padding-top: 8px; }
+.options-section button { margin-bottom: 10px; }
+.secondary.danger { color: #ff6b6b; border-color: #ff6b6b; }
 .shop-links { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 .streak-status { flex: 1 1 100%; min-width: 0; padding: 10px 12px; border-radius: 12px; background: #26253f; font-size: 13px; }
 .streak-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
