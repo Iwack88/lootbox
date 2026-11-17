@@ -251,7 +251,11 @@ function render() {
 
   if (c) {
     const q = quality(), r = rewardFor(q, c);
-    $('preview').textContent = `Aktuell: ${Math.round(q * 100)}% → 💰 ${r.gold}  ⭐ ${r.exp}`;
+    const itemCost = state.box.reduce((sum, item) => sum + item.cost, 0);
+    const netGold = r.gold - itemCost;
+    $('preview').innerHTML = `Aktuell: ${Math.round(q * 100)}% → 💰 ${r.gold}  ⭐ ${r.exp}<br>
+      <span class="item-cost">Itemkosten: ${itemCost} 💰</span>
+      <span class="net-gold${netGold < 0 ? ' loss' : ''}"> · Netto: ${netGold >= 0 ? '+' : ''}${netGold} 💰</span>`;
   } else {
     $('preview').textContent = '';
   }
