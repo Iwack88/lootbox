@@ -26,11 +26,11 @@ const ITEMS = [
   { id: 'runeblade', name: 'Runenklinge', icon: '🗡️', stats: { melee: 12, magic: 10 }, rarity: 'rare', cost: 34, level: 3 },
   { id: 'guardianAmulet', name: 'Amulett des Wächters', icon: '📿', stats: { hp: 20, armor: 10 }, rarity: 'rare', cost: 30, level: 4 },
   { id: 'lifebloomStaff', name: 'Stab der Lebensblüte', icon: '🌿', stats: { magic: 20, hp: 15 }, rarity: 'rare', cost: 40, level: 5 },
-  { id: 'bandage', name: 'Verband', icon: '🩹', stats: { hp: 6 }, rarity: 'common', cost: 2, level: 2 },
+  { id: 'bandage', name: 'Verband', icon: '🩹', stats: { hp: 6 }, rarity: 'common', cost: 2, level: 1 },
   { id: 'ironSword', name: 'Eisenschwert', icon: '⚔️', stats: { melee: 10 }, rarity: 'common', cost: 9, level: 2 },
   { id: 'buckler', name: 'Faustschild', icon: '🛡️', stats: { armor: 4 }, rarity: 'common', cost: 2, level: 2 },
-  { id: 'leatherCap', name: 'Lederkappe', icon: '🪖', stats: { armor: 3 }, rarity: 'common', cost: 1, level: 2 },
-  { id: 'sparkStone', name: 'Funkenstein', icon: '💎', stats: { magic: 7 }, rarity: 'common', cost: 3, level: 2 },
+  { id: 'leatherCap', name: 'Lederkappe', icon: '🪖', stats: { armor: 3 }, rarity: 'common', cost: 1, level: 1 },
+  { id: 'sparkStone', name: 'Funkenstein', icon: '💎', stats: { magic: 7 }, rarity: 'common', cost: 3, level: 1 },
   { id: 'battleAxe', name: 'Streitaxt', icon: '🪓', stats: { melee: 18 }, rarity: 'common', cost: 24, level: 3 },
   { id: 'steelShield', name: 'Stahlschild', icon: '🛡️', stats: { armor: 14 }, rarity: 'common', cost: 14, level: 3 },
   { id: 'restorationDraught', name: 'Regenerationstrank', icon: '⚗️', stats: { hp: 37 }, rarity: 'common', cost: 29, level: 3 },
@@ -118,6 +118,9 @@ const MERCHANT_INTERVAL = 5;
 const RESTOCK_COST = 20;
 const RESTOCK_SIZE = 3;
 const RESTOCK_IDS = ['pot1', 'dag', 'shield', 'wand'];
+const SHOP_BASE_IDS = ['bandage', 'dag', 'leatherCap', 'sparkStone'];
+const SHOP_SLOT_INTERVAL = 5;
+const shopPrice = item => Math.ceil(item.cost * 1.25);
 const CUSTOMER_TIERS = [
   { id: 'wannabe', label: 'Wannabe', level: 1, points: 1, weight: 50, scale: 0.6, rarity: 'common', time: 120,
     reward: { quality: 0.5, ids: ['pot1', 'dag', 'shield', 'wand', 'bandage', 'ironSword', 'buckler', 'leatherCap', 'sparkStone'] } },
@@ -149,18 +152,37 @@ const isUnlocked = entry => progression().level >= entry.level;
 
 const queueCapacity = () => CUSTOMER_PLACES.filter(isUnlocked).at(-1).count;
 
+const shopCapacity = (level = progression().level) => SHOP_BASE_IDS.length + Math.floor(level / SHOP_SLOT_INTERVAL);
+
+function rollShopOffers() {
+  const pool = ITEMS.filter(item => isUnlocked(item) && !SHOP_BASE_IDS.includes(item.id));
+  const offers = [...SHOP_BASE_IDS];
+  // Auch bei sehr vielen Plätzen bleibt mindestens ein wechselndes Item außerhalb des Shops.
+  const limit = Math.min(shopCapacity(), offers.length + Math.max(0, pool.length - 1));
+  while (offers.length < limit) {
+    const index = Math.floor(Math.random() * pool.length);
+    offers.push(pool.splice(index, 1)[0].id);
+  }
+  return offers;
+}
+
+const shopItems = () => ITEMS.filter(item => state.shopOffers.includes(item.id) && isUnlocked(item));
+
 function unlocksAtLevel(level) {
   return [
     ...ITEMS.filter(item => item.level === level).map(item => `Item: ${item.icon} ${itemNameHtml(item)} (${ITEM_RARITIES[item.rarity].label} · ${statsText(item.stats)})`),
     ...BOXES.filter(box => box.level === level).map(box => `Kiste: ${box.icon} ${box.name} (${box.slots} Items · ${boxEffectsText(box)})`),
     ...CUSTOMER_TIERS.filter(tier => tier.level === level).map(tier => `Kunden: ${tier.label}`),
     ...CUSTOMER_PLACES.filter(places => places.level === level).map(places => `${places.count} Kundenplätze`),
+    ...(level === 1 ? ['Shop: 4 feste Basis-Angebote – Verband, Kurzschwert, Lederkappe und Funkenstein'] : []),
+    ...(level % SHOP_SLOT_INTERVAL === 0 ? [`Shop: +1 zufälliger Angebotsplatz (${shopCapacity(level)} Plätze insgesamt) ab dem nächsten Händlerbesuch`] : []),
   ];
 }
 
 function renderRoadmap() {
   const { level } = progression();
-  const lastMilestone = Math.max(...[...ITEMS, ...BOXES, ...CUSTOMER_TIERS, ...CUSTOMER_PLACES].map(entry => entry.level));
+  const lastMilestone = Math.max(10, (Math.floor(level / SHOP_SLOT_INTERVAL) + 1) * SHOP_SLOT_INTERVAL,
+    ...[...ITEMS, ...BOXES, ...CUSTOMER_TIERS, ...CUSTOMER_PLACES].map(entry => entry.level));
   $('roadmap').innerHTML = Array.from({ length: lastMilestone }, (_, i) => {
     const milestone = i + 1;
     return `<section class="milestone ${milestone <= level ? 'unlocked' : 'locked'}">
@@ -168,7 +190,7 @@ function renderRoadmap() {
       <small>${expForLevel(milestone)} Gesamt-EXP${milestone > 1 ? ` · ${100 * (milestone - 1)} EXP ab Level ${milestone - 1}` : ''}</small>
       <ul>${unlocksAtLevel(milestone).map(unlock => `<li>${unlock}</li>`).join('')}</ul>
     </section>`;
-  }).join('') + '<p class="hint">Weitere Level sind möglich. Zusätzliche Freischaltungen folgen später. Items werden im Shop und als Kundenbelohnungen verfügbar, nicht automatisch ins Inventar gelegt.</p>';
+  }).join('') + '<p class="hint">Item-Freischaltungen erweitern den möglichen Angebots- und Belohnungspool, nicht automatisch dein Inventar oder das Shop-Sortiment. Vier schwächste Basis-Items sind immer im Shop. Alle fünf Level kommt ein zufälliger Angebotsplatz dazu. Die Auswahl wird pro Händlerbesuch neu gezogen und bleibt während des Besuchs gleich. Auch nach Level 10 gibt es alle fünf Level einen weiteren Platz. Wenn der Itempool zu klein ist, bleiben Plätze leer: Mindestens ein wechselndes Item bleibt immer außerhalb des Sortiments.</p>';
 }
 
 let nextId = 1;
@@ -203,8 +225,8 @@ function generateCustomer() {
 }
 
 const state = {
-  gold: 500, exp: 0, inventory: Object.fromEntries(ITEMS.filter(item => item.level === 1).map(item => [item.id, 5])), cart: {}, boxType: null, box: [], active: null, queue: [], spawnT: 0,
-  shopping: false, completed: 0, debt: 0, showingResult: false,
+  gold: 500, exp: 0, inventory: Object.fromEntries(RESTOCK_IDS.map(id => [id, 5])), cart: {}, boxType: null, box: [], active: null, queue: [], spawnT: 0,
+  shopping: false, shopOffers: [], completed: 0, debt: 0, showingResult: false,
   streak: 0, claimedCheckpoints: [], pendingDiscounts: [], activeDiscount: null,
 };
 
@@ -320,14 +342,14 @@ const cartQuantity = () => Object.values(state.cart).reduce((sum, quantity) => s
 
 const discountPercent = () => CHECKPOINTS.find(checkpoint => checkpoint.points === state.activeDiscount)?.discount || 0;
 
-const cartSubtotal = () => ITEMS.reduce((sum, item) => sum + item.cost * (state.cart[item.id] || 0), 0);
+const cartSubtotal = () => ITEMS.reduce((sum, item) => sum + shopPrice(item) * (state.cart[item.id] || 0), 0);
 
 const cartTotal = () => Math.ceil(cartSubtotal() * (100 - discountPercent()) / 100);
 
 function addToCart(id) {
   const it = ITEMS.find(i => i.id === id);
-  if (!state.shopping || !it || !isUnlocked(it)) return;
-  const restoreFocus = document.activeElement?.closest('#shop .shop-item')?.dataset.id === id;
+  if (!state.shopping || !it || !shopItems().includes(it)) return;
+  const restoreFocus = document.activeElement?.closest('#shop .shop-row')?.querySelector('.add-item')?.dataset.id === id;
   $('checkoutMessage').textContent = '';
   state.cart[id] = (state.cart[id] || 0) + 1;
   sfx.play('cart');
@@ -349,8 +371,8 @@ function removeFromCart(id) {
 
 function checkout() {
   if (!state.shopping || cartQuantity() === 0 || cartTotal() > state.gold) return;
-  if (Object.keys(state.cart).some(id => !ITEMS.some(item => item.id === id && isUnlocked(item)))) {
-    $('checkoutMessage').textContent = 'Der Warenkorb enthält noch gesperrte Items.';
+  if (Object.keys(state.cart).some(id => !shopItems().some(item => item.id === id))) {
+    $('checkoutMessage').textContent = 'Der Warenkorb enthält gesperrte oder bei diesem Besuch nicht angebotene Items.';
     return;
   }
   const total = cartTotal();
@@ -370,6 +392,7 @@ function finishShopping() {
   if (cartQuantity() > 0 && !confirm('Warenkorb verwerfen und Einkauf beenden?')) return;
   state.cart = {};
   state.shopping = false;
+  state.shopOffers = [];
   state.activeDiscount = null;
   $('checkoutMessage').textContent = '';
   sfx.play('select');
@@ -484,6 +507,7 @@ function send() {
   if (state.completed === MERCHANT_INTERVAL) {
     state.completed = 0;
     state.shopping = true;
+    state.shopOffers = rollShopOffers();
     state.activeDiscount = state.pendingDiscounts.shift() || null;
   }
   const label = q >= 0.9 ? 'Perfekt!' : q >= 0.6 ? 'Gut' : q >= 0.3 ? 'Geht so' : 'Schlecht';
@@ -611,7 +635,7 @@ function render() {
     ? `Es fehlen ${cartTotal() - state.gold} Gold. Passe den Warenkorb an.`
     : $('checkoutMessage').textContent;
   $('shopHint').textContent = state.shopping
-    ? 'Kaufe Vorräte für fünf Aufträge. Jeder Kauf landet im Inventar. Mit „Einkauf beenden“ startet die Runde.'
+    ? `${state.shopOffers.length} Angebote: 4 feste Basis-Items und ${Math.max(0, state.shopOffers.length - SHOP_BASE_IDS.length)} zufällige Extras. Nächster Angebotsplatz: Level ${(Math.floor(progress.level / SHOP_SLOT_INTERVAL) + 1) * SHOP_SLOT_INTERVAL}. Auswahl bleibt für diesen Besuch gleich. Händlerpreise: +25 %, auf ganze Gold aufgerundet; Serienrabatt gilt danach. Jeder Kauf landet im Inventar.`
     : 'Der Händler kommt nach fünf abgeschlossenen Aufträgen wieder. Nutze bis dahin dein Inventar oder den Notfall-Restock.';
   $('restock').disabled = state.shopping || state.showingResult || (state.debt > 0 && state.gold < RESTOCK_COST);
   $('restock').textContent = `Notfall-Restock · ${RESTOCK_COST} Gold`;
@@ -636,13 +660,13 @@ function render() {
 
   if (c) {
     const q = quality(), r = rewardFor(q, c);
-    const itemCost = state.box.reduce((sum, item) => sum + item.cost, 0);
+    const itemCost = state.box.reduce((sum, item) => sum + shopPrice(item), 0);
     const repayment = Math.min(state.debt, r.gold);
     const netGold = r.gold - itemCost - repayment;
     $('preview').innerHTML = `Aktuell: ${qualityPercent(q)}% → 💰 ${r.gold}  ⭐ ${r.exp}<br>
-      <span class="item-cost">Itemkosten: ${itemCost} 💰</span>
-      <span class="net-gold${netGold < 0 ? ' loss' : ''}"> · Netto: ${netGold >= 0 ? '+' : ''}${netGold} 💰</span>
-      ${repayment ? `<br>Davon Vorschuss-Rückzahlung: ${repayment} Gold (im Netto berücksichtigt)` : ''}<br>
+      <span class="item-cost">Shopwert: ${itemCost} 💰 (ohne Rabatt; Belohnungsitems sind gratis)</span>
+      <span class="net-gold${netGold < 0 ? ' loss' : ''}"> · Gegenwert-Differenz: ${netGold >= 0 ? '+' : ''}${netGold} 💰</span>
+      ${repayment ? `<br>Davon Vorschuss-Rückzahlung: ${repayment} Gold (in der Differenz berücksichtigt)` : ''}<br>
       ${itemRewardHtml(c, !!r.item)}<div class="streak-preview">+${CUSTOMER_TIERS.find(tier => tier.id === c.tier).points} Serienpunkte bei Reward</div>`;
   } else {
     $('preview').textContent = '';
@@ -651,19 +675,15 @@ function render() {
 
   const shopRow = it => {
     const inCart = state.cart[it.id] || 0;
-    const locked = !isUnlocked(it);
     return `<div class="shop-row item-rarity-${it.rarity}">
       <span class="ico">${it.icon}</span>
-      <span class="txt">${itemNameHtml(it)}<small>${itemDetailsHtml(it)}</small><small>Im Lager: ${state.inventory[it.id] || 0} · Im Warenkorb: ${inCart}</small></span>
-      <span class="cost">💰 ${it.cost}</span>
-      <button class="add-item" data-id="${it.id}" ${locked ? 'disabled' : ''} aria-label="${it.name} ${locked ? `ab Level ${it.level}` : 'in den Warenkorb legen'}">${locked ? `Lv. ${it.level}` : '＋'}</button>
+      <span class="txt">${itemNameHtml(it)}<small>${SHOP_BASE_IDS.includes(it.id) ? 'Festes Basis-Angebot' : 'Zufallsangebot für diesen Besuch'}</small><small>${itemDetailsHtml(it)}</small><small>Im Lager: ${state.inventory[it.id] || 0} · Im Warenkorb: ${inCart}</small></span>
+      <span class="cost">💰 ${shopPrice(it)}</span>
+      <button class="add-item" data-id="${it.id}" aria-label="${it.name} in den Warenkorb legen">＋</button>
     </div>`;
   };
-  const unlockedItems = ITEMS.filter(isUnlocked).sort((a, b) => a.level - b.level);
-  const lockedItems = ITEMS.filter(item => !isUnlocked(item)).sort((a, b) => a.level - b.level);
   $('shop').innerHTML = state.shopping
-    ? unlockedItems.map(shopRow).join('') + (lockedItems.length
-      ? `<details class="locked-items"><summary>Später freischalten (${lockedItems.length})</summary><div class="shop">${lockedItems.map(shopRow).join('')}</div></details>` : '')
+    ? shopItems().map(shopRow).join('')
     : '<div class="empty">Der Händler ist unterwegs.</div>';
   $('shop').querySelectorAll('.add-item').forEach(el => el.onclick = () => addToCart(el.dataset.id));
   $('cart').innerHTML = cartQuantity()

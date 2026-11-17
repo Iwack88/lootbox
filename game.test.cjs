@@ -92,9 +92,73 @@ function fakeAudio(options = {}) {
 
 function createShoppingGame(options = {}) {
   const run = createGame(options);
-  run('state.inventory = {}; state.exp = expForLevel(7); state.shopping = true; render();');
+  // Broad purchase fixtures exercise inventory mechanics independently of the random assortment.
+  run('state.inventory = {}; state.exp = expForLevel(7); state.shopping = true; state.shopOffers = ITEMS.map(item => item.id); render();');
   return run;
 }
+
+test('merchant capacity grows independently of item unlocks and always includes the weakest item for every need', () => {
+  const run = createGame();
+  for (const [level, count] of [[1, 4], [2, 4], [4, 4], [5, 5], [9, 5], [10, 6], [15, 7], [100, 23]]) {
+    for (const random of [0, .4, .99999]) {
+      run(`state.exp = expForLevel(${level}); Math.random = () => ${random};
+        state.shopOffers = rollShopOffers(); state.shopping = true; render();`);
+      assert.equal(run('shopItems().length'), count);
+      assert.equal(run('new Set(state.shopOffers).size'), count);
+      assert.equal(run('shopItems().every(isUnlocked)'), true);
+      assert.equal(run('SHOP_BASE_IDS.every(id => state.shopOffers.includes(id))'), true);
+      assert.equal(run(`Object.keys(ATTRS).every(attr => shopItems().some(item =>
+        Object.keys(item.stats).length === 1 &&
+        item.stats[attr] === Math.min(...ITEMS.filter(candidate => candidate.stats[attr] > 0).map(candidate => candidate.stats[attr]))
+      ))`), true);
+      assert.equal((run("$('shop').innerHTML").match(/class="add-item"/g) || []).length, count);
+      assert.ok(count < run('ITEMS.filter(isUnlocked).length'));
+    }
+  }
+  run('state.exp = expForLevel(15); renderRoadmap()');
+  assert.match(run("$('roadmap').innerHTML"), /Shop: \+1 zufälliger Angebotsplatz \(5 Plätze insgesamt\)/);
+  assert.match(run("$('roadmap').innerHTML"), /Shop: \+1 zufälliger Angebotsplatz \(6 Plätze insgesamt\)/);
+  assert.match(run("$('roadmap').innerHTML"), /Level 20/);
+});
+
+test('a level-up on the fifth delivery expands the upcoming visit and offers stay fixed until the next visit', () => {
+  const run = createGame();
+  run(`Math.random = () => 0; state.exp = expForLevel(5) - 1; state.completed = 4;
+    selectCustomer(state.queue[0].id); chooseBox('small');
+    state.active.needs = [{attr:'hp', target:10, prio:1}]; packItem('pot1'); send();`);
+  assert.equal(run('progression().level'), 5);
+  assert.equal(run('state.shopOffers.length'), 5);
+  assert.match(run("$('result').innerHTML"), /Shop: \+1 zufälliger Angebotsplatz/);
+  run(`$('next').onclick(); globalThis.offers = JSON.stringify(state.shopOffers);
+    Math.random = () => .99999; render(); openRoadmap(); $('closeRoadmap').onclick();
+    addToCart('bandage'); checkout(); addToCart('bandage'); removeFromCart('bandage'); render();`);
+  assert.equal(run('JSON.stringify(state.shopOffers)'), run('offers'));
+  run(`finishShopping(); state.completed = 4; state.queue = [generateCustomer()];
+    selectCustomer(state.queue[0].id); chooseBox('small'); send(); $('next').onclick();`);
+  assert.equal(run('state.shopOffers.length'), 5);
+  assert.notEqual(run('JSON.stringify(state.shopOffers)'), run('offers'));
+  assert.equal(run("state.shopOffers.includes('vampiricDagger')"), true);
+});
+
+test('unoffered unlocked items cannot be bought and visit discounts apply after the shop markup', () => {
+  const run = createGame();
+  run(`state.exp = expForLevel(5); Math.random = () => 0; state.completed = 4;
+    selectCustomer(state.queue[0].id); chooseBox('small'); send(); $('next').onclick();
+    globalThis.gold = state.gold; globalThis.stock = JSON.stringify(state.inventory);
+    addToCart('sword');`);
+  assert.equal(run("isUnlocked(ITEMS.find(item => item.id === 'sword'))"), true);
+  assert.equal(run('cartQuantity()'), 0);
+  run("state.cart.sword = 1; checkout()");
+  assert.equal(run('state.gold'), run('gold'));
+  assert.equal(run('JSON.stringify(state.inventory)'), run('stock'));
+  assert.match(run("$('checkoutMessage').textContent"), /nicht angebotene Items/);
+  run("state.cart = {}; state.activeDiscount = 15; addToCart('dag'); addToCart('bandage');");
+  assert.equal(run('cartSubtotal()'), 11);
+  assert.equal(run('cartTotal()'), 10);
+  run("checkout(); addToCart('dag'); addToCart('bandage'); checkout();");
+  assert.equal(run('state.gold'), run('gold - 20'));
+  assert.equal(run('state.activeDiscount'), 15);
+});
 
 test('purchases fill inventory without a customer or box; packing spends no gold', () => {
   const run = createShoppingGame();
@@ -103,7 +167,7 @@ test('purchases fill inventory without a customer or box; packing spends no gold
   assert.equal(run('state.cart.pot1'), 2);
   assert.equal(run('state.inventory.pot1'), undefined);
   run('checkout()');
-  assert.equal(run('state.gold'), 490);
+  assert.equal(run('state.gold'), 486);
   assert.equal(run('state.inventory.pot1'), 2);
   assert.equal(run('state.box.length'), 0);
   run("packItem('pot1')");
@@ -111,12 +175,12 @@ test('purchases fill inventory without a customer or box; packing spends no gold
   run("finishShopping(); selectCustomer(state.queue[0].id); chooseBox('small'); packItem('pot1');");
   assert.equal(run('state.inventory.pot1'), 1);
   assert.equal(run('state.box.length'), 1);
-  assert.equal(run('state.gold'), 490);
-  assert.match(run("$('preview').innerHTML"), /Itemkosten: 5/);
+  assert.equal(run('state.gold'), 486);
+  assert.match(run("$('preview').innerHTML"), /Shopwert: 7/);
   run('removeFromBox(0)');
   assert.equal(run('state.inventory.pot1'), 2);
-  assert.equal(run('state.gold'), 490);
-  assert.match(run("$('preview').innerHTML"), /Itemkosten: 0/);
+  assert.equal(run('state.gold'), 486);
+  assert.match(run("$('preview').innerHTML"), /Shopwert: 0/);
 });
 
 test('inventory and item-count capacity; merchant is unavailable during the round', () => {
@@ -131,7 +195,7 @@ test('inventory and item-count capacity; merchant is unavailable during the roun
   run("packItem('wand')");
   assert.equal(run('state.box.length'), 3);
   run("addToCart('pot3'); checkout()");
-  assert.equal(run('state.gold'), 440);
+  assert.equal(run('state.gold'), 416);
 });
 
 test('box and customer switches return items; sending consumes only packed items', () => {
@@ -145,7 +209,7 @@ test('box and customer switches return items; sending consumes only packed items
   run("packItem('pot1'); selectCustomer(state.queue[0].id);");
   assert.equal(run('state.box.length'), 0);
   assert.equal(run('state.inventory.pot1'), 2);
-  assert.equal(run('state.gold'), 490);
+  assert.equal(run('state.gold'), 486);
   run("chooseBox('small'); packItem('pot1'); state.active.needs = [{attr:'magic', target:15, prio:1}]; globalThis.expectedGold = state.gold + rewardFor(quality(), state.active).gold; send();");
   assert.equal(run('state.gold'), run('expectedGold'));
   assert.equal(run('state.inventory.pot1'), 1);
@@ -324,8 +388,8 @@ test('merchant pauses customers, blocks selection, and returns after exactly fiv
       assert.equal(run('state.completed'), i % 5);
       run("$('next').onclick()");
     }
-    run('addToCart("pot1"); checkout()');
-    assert.equal(run('state.inventory.pot1'), cycle + 1);
+    run('addToCart("dag"); checkout()');
+    assert.equal(run('state.inventory.dag'), cycle + 1);
     run('finishShopping()');
   }
 });
@@ -419,7 +483,7 @@ test('merchant dialog opens during shopping and after the fifth result, and clos
   assert.equal(run("$('shopDialog').open"), true);
   run("addToCart('pot1'); checkout()");
   assert.equal(run("$('shopDialog').open"), true);
-  assert.equal(run("$('shopGold').textContent"), 495);
+  assert.equal(run("$('shopGold').textContent"), 493);
   run('finishShopping()');
   assert.equal(run("$('shopDialog').open"), false);
   for (let i = 0; i < 5; i++) {
@@ -440,19 +504,19 @@ test('cart quantities track stock, remain staged until checkout, and over-budget
   assert.equal(run('state.cart.pot1'), 1);
   assert.match(run("$('shop').innerHTML"), /Im Lager: 2 · Im Warenkorb: 1/);
   assert.match(run("$('cart').innerHTML"), /Im Lager: 2 · Im Warenkorb: 1/);
-  assert.equal(run("$('checkoutTotal').textContent"), '23 Gold');
+  assert.equal(run("$('checkoutTotal').textContent"), '30 Gold');
   run("removeFromCart('pot1')");
   assert.equal(run('state.cart.pot1'), undefined);
   assert.equal(run('state.inventory.pot1'), 2);
-  assert.equal(run("$('checkoutTotal').textContent"), '18 Gold');
+  assert.equal(run("$('checkoutTotal').textContent"), '23 Gold');
   run("state.gold = 10; addToCart('pot1'); addToCart('pot2'); checkout();");
   assert.equal(run('state.gold'), 10);
   assert.equal(run('state.inventory.pot1'), 2);
   assert.equal(run('state.inventory.pot2'), undefined);
   assert.equal(run("$('checkout').disabled"), true);
-  assert.match(run("$('checkoutMessage').textContent"), /Es fehlen 31 Gold/);
+  assert.match(run("$('checkoutMessage').textContent"), /Es fehlen 43 Gold/);
   run("removeFromCart('pot2'); removeFromCart('pot2'); checkout()");
-  assert.equal(run('state.gold'), 5);
+  assert.equal(run('state.gold'), 3);
   assert.equal(run('state.inventory.pot1'), 3);
   assert.equal(run('state.cart.pot1'), undefined);
   assert.equal(run('state.cart.pot2'), undefined);
@@ -476,8 +540,8 @@ test('new game starts with five of each base item and only wannabes; merchant ar
   assert.equal(run('state.shopping'), false);
   assert.equal(run("$('shopDialog').open"), undefined);
   assert.equal(run('state.gold'), 500);
-  assert.equal(run('Object.keys(state.inventory).length'), run('ITEMS.filter(isUnlocked).length'));
-  assert.equal(run('ITEMS.every(item => state.inventory[item.id] === (item.level === 1 ? 5 : undefined))'), true);
+  assert.equal(run('Object.keys(state.inventory).length'), run('RESTOCK_IDS.length'));
+  assert.equal(run('ITEMS.every(item => state.inventory[item.id] === (RESTOCK_IDS.includes(item.id) ? 5 : undefined))'), true);
   assert.equal(run("state.queue.every(customer => customer.tier === 'wannabe')"), true);
   assert.match(run("$('merchantStatus').textContent"), /5 Aufträgen/);
   run("selectCustomer(state.queue[0].id); chooseBox('small'); packItem('pot1');");
@@ -492,7 +556,8 @@ test('new game starts with five of each base item and only wannabes; merchant ar
     if (i < 5) run("state.queue = [generateCustomer()]; selectCustomer(state.queue[0].id); chooseBox('small');");
   }
   assert.equal(run("$('shopDialog').open"), true);
-  assert.equal(run('ITEMS.every(item => state.inventory[item.id] === (item.level === 1 ? 5 : undefined))'), true);
+  assert.equal(run('state.shopOffers.length'), 4);
+  assert.equal(run('ITEMS.every(item => state.inventory[item.id] === (RESTOCK_IDS.includes(item.id) ? 5 : undefined))'), true);
 });
 
 test('level thresholds carry overflow and level-ups unlock items and boxes without granting free stock', () => {
@@ -519,7 +584,7 @@ test('level gates hold for shop, checkout and boxes and roadmap reflects the sam
   run("state.cart.sword = 1; checkout();");
   assert.equal(run('state.gold'), 500);
   assert.equal(run('state.inventory.sword'), undefined);
-  assert.match(run("$('checkoutMessage').textContent"), /gesperrte Items/);
+  assert.match(run("$('checkoutMessage').textContent"), /gesperrte oder bei diesem Besuch nicht angebotene Items/);
   run("state.cart = {}; finishShopping(); selectCustomer(state.queue[0].id); chooseBox('medium');");
   assert.equal(run('state.boxType'), null);
   run("state.exp = expForLevel(3); chooseBox('medium');");
@@ -619,17 +684,17 @@ test('earned discounts apply immediately to the next merchant, cover multiple ch
   assert.equal(run('state.streak'), 15);
   assert.equal(run('state.activeDiscount'), 15);
   assert.equal(run('state.pendingDiscounts.length'), 0);
-  run("$('next').onclick(); state.gold = 32; addToCart('pot2');");
-  assert.equal(run('cartSubtotal()'), 18);
-  assert.equal(run('cartTotal()'), 17);
+  run("$('next').onclick(); state.gold = 13; addToCart('dag');");
+  assert.equal(run('cartSubtotal()'), 8);
+  assert.equal(run('cartTotal()'), 8);
   run('checkout();');
-  assert.equal(run('state.gold'), 15);
-  run("addToCart('pot2'); checkout();");
-  assert.equal(run('state.gold'), 15);
+  assert.equal(run('state.gold'), 5);
+  run("addToCart('dag'); checkout();");
+  assert.equal(run('state.gold'), 5);
   assert.equal(run('cartQuantity()'), 1);
   assert.equal(run('state.activeDiscount'), 15);
   run('state.gold = 100; checkout();');
-  assert.equal(run('state.gold'), 83);
+  assert.equal(run('state.gold'), 92);
   assert.equal(run('state.activeDiscount'), 15);
   assert.match(run("$('shopDiscount').textContent"), /10 % Serienrabatt/);
   run('finishShopping(); changeStreak(10);');
@@ -637,9 +702,9 @@ test('earned discounts apply immediately to the next merchant, cover multiple ch
   assert.deepEqual(JSON.parse(run('JSON.stringify(state.pendingDiscounts)')), [25]);
   run(`state.completed = 4; state.queue = [generateCustomer()];
     selectCustomer(state.queue[0].id); chooseBox('small'); send(); $('next').onclick();
-    addToCart('pot2');`);
+    addToCart('dag');`);
   assert.equal(run('state.activeDiscount'), 25);
-  assert.equal(run('cartTotal()'), 16);
+  assert.equal(run('cartTotal()'), 7);
   assert.match(run("$('shopDiscount').textContent"), /15 % Serienrabatt/);
   run('checkout(); finishShopping();');
   assert.equal(run('discountPercent()'), 0);
@@ -796,7 +861,7 @@ test('rare items unlock in the shop, transfer at checkout, and fulfill two needs
     run(`checkout(); finishShopping(); selectCustomer(state.queue[0].id);
       state.active.needs = Object.entries(item.stats).map(([attr,target]) => ({attr,target,prio:2}));
       chooseBox('small'); packItem(item.id);`);
-    assert.equal(run('state.gold'), run('500 - item.cost'));
+    assert.equal(run('state.gold'), run('500 - shopPrice(item)'));
     assert.equal(run('usedSlots()'), 1);
     assert.equal(run('state.inventory[item.id]'), 0);
     assert.equal(run('quality()'), 1);
@@ -827,7 +892,7 @@ test('multi-attribute items combine with ordinary items and box modifiers withou
   assert.deepEqual(JSON.parse(run('JSON.stringify(totals())')), { magic: 25, melee: 2, armor: 20, hp: 25 });
   assert.equal(run('quality()'), 1);
   assert.equal(run('usedSlots()'), 3);
-  assert.match(run("$('preview').innerHTML"), /Itemkosten: 90/);
+  assert.match(run("$('preview').innerHTML"), /Shopwert: 114/);
   run('removeFromBox(0)');
   assert.deepEqual(JSON.parse(run('JSON.stringify(totals())')), { magic: 15, melee: -10, armor: 20, hp: 25 });
   assert.ok(run('quality()') < 1);
@@ -881,12 +946,12 @@ test('customers generate integer needs including 18 melee and 14 armor within th
 
 test('fine-grained item recipes trade gold against slots and overfilling a need is still allowed', () => {
   for (const [ids, needs, cost] of [
-    [['ironSword', 'dag', 'shield', 'buckler'], {melee:18, armor:14}, 25],
-    [['battleAxe', 'steelShield'], {melee:18, armor:14}, 38],
-    [['buckler', 'buckler', 'leatherCap', 'leatherCap'], {armor:14}, 6],
-    [['steelShield'], {armor:14}, 14],
-    [['pot2', 'bandage', 'bandage'], {hp:37}, 22],
-    [['restorationDraught'], {hp:37}, 29],
+    [['ironSword', 'dag', 'shield', 'buckler'], {melee:18, armor:14}, 33],
+    [['battleAxe', 'steelShield'], {melee:18, armor:14}, 48],
+    [['buckler', 'buckler', 'leatherCap', 'leatherCap'], {armor:14}, 10],
+    [['steelShield'], {armor:14}, 18],
+    [['pot2', 'bandage', 'bandage'], {hp:37}, 29],
+    [['restorationDraught'], {hp:37}, 37],
   ]) {
     const run = createShoppingGame();
     run(`state.exp = expForLevel(3);
@@ -909,13 +974,12 @@ test('fine-grained item recipes trade gold against slots and overfilling a need 
   }
 });
 
-test('the expanded catalog is staged, future shop items are collapsed, and new customer rewards obey unlocks', () => {
+test('the expanded catalog is staged independently of shop offers and customer rewards obey unlocks', () => {
   const run = createGame();
   assert.ok(run('ITEMS.length') >= 20 && run('ITEMS.length') <= 25);
   run('state.shopping = true; render();');
-  assert.match(run("$('shop').innerHTML"), /<details class="locked-items"><summary>Später freischalten/);
-  assert.doesNotMatch(run("$('shop').innerHTML"), /<details class="locked-items" open/);
-  assert.equal(run('ITEMS.filter(isUnlocked).length'), 4);
+  assert.doesNotMatch(run("$('shop').innerHTML"), /locked-items/);
+  assert.ok(run('ITEMS.filter(isUnlocked).length') > run('shopCapacity()'));
   run(`state.exp = expForLevel(2); render();
     globalThis.rollCustomerTier = () => CUSTOMER_TIERS.find(tier => tier.id === 'wannabe');
     Math.random = () => .99999;

@@ -106,8 +106,6 @@ button[hidden] { display: none; }
 .preview .net-gold.loss { color: #ff6b6b; }
 
 .shop { display: flex; flex-direction: column; gap: 8px; }
-.locked-items { border-top: 1px solid #6c63ff; padding-top: 10px; }
-.locked-items > summary { font-size: 14px; }
 .shop-item { display: flex; align-items: center; gap: 10px; background: #34325c; border: 0; border-radius: 10px; color: inherit; font: inherit; padding: 10px; text-align: left; touch-action: manipulation; }
 .shop-item:disabled { opacity: .4; }
 .shop-item:not(:disabled):active { transform: scale(.98); }
