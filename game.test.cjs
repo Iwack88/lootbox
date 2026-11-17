@@ -5,9 +5,15 @@ const vm = require('node:vm');
 
 function createGame(options = {}) {
   const elements = new Map();
+  const storage = options.storage || new Map();
   const context = vm.createContext({
+    AudioContext: options.AudioContext,
+    console: options.console || console,
     matchMedia: () => ({ matches: false, addEventListener() {} }),
     document: {
+      hidden: false,
+      listeners: {},
+      addEventListener(type, listener) { this.listeners[type] = listener; },
       querySelector: () => null,
       getElementById(id) {
         if (!elements.has(id)) {
@@ -16,6 +22,7 @@ function createGame(options = {}) {
             style: {},
             querySelectorAll: () => [],
             addEventListener() {},
+            setAttribute(name, value) { this[name] = value; },
             showModal() { this.open = true; },
             close() { this.open = false; },
             focus() {},
@@ -24,13 +31,62 @@ function createGame(options = {}) {
         return elements.get(id);
       },
     },
-    localStorage: { getItem: () => null },
+    localStorage: {
+      getItem: key => storage.get(key) ?? null,
+      setItem: (key, value) => storage.set(key, value),
+    },
     confirm: options.confirm || (() => true),
     performance: { now: () => 0 },
     setInterval() {},
   });
-  vm.runInContext(readFileSync(`${__dirname}/game.js`, 'utf8'), context);
+  for (const file of ['sound.js', 'game.js']) {
+    vm.runInContext(readFileSync(`${__dirname}/${file}`, 'utf8'), context);
+  }
   return code => vm.runInContext(code, context);
+}
+
+function fakeAudio(options = {}) {
+  const contexts = [];
+  const param = () => ({
+    events: [],
+    setValueAtTime(...args) { this.events.push(['set', ...args]); },
+    linearRampToValueAtTime(...args) { this.events.push(['ramp', ...args]); },
+    cancelScheduledValues(...args) { this.events.push(['cancel', ...args]); },
+    setTargetAtTime(...args) { this.events.push(['target', ...args]); },
+  });
+  class AudioContext {
+    constructor() {
+      this.state = 'suspended';
+      this.currentTime = 1;
+      this.destination = {};
+      this.oscillators = [];
+      this.gains = [];
+      contexts.push(this);
+    }
+    resume() {
+      if (options.failResume) return Promise.reject(new Error('Audio blocked'));
+      this.state = 'running';
+      return Promise.resolve();
+    }
+    createGain() {
+      const gain = { gain: param(), connect() {}, disconnect() { this.disconnected = true; } };
+      this.gains.push(gain);
+      return gain;
+    }
+    createOscillator() {
+      if (options.failOscillator) throw new Error('Audio output failed');
+      const oscillator = {
+        frequency: param(),
+        connect() {},
+        disconnect() { this.disconnected = true; },
+        start(time) { this.startTime = time; },
+        stop(time) { this.stopTime = time; },
+      };
+      this.oscillators.push(oscillator);
+      return oscillator;
+    }
+  }
+  return { contexts, AudioContext };
 }
 
 function createShoppingGame(options = {}) {
@@ -566,4 +622,123 @@ test('checkpoint details distinguish pending and earned rewards and pause timers
   assert.equal(run('state.pendingDiscounts.length'), 1);
   run("$('closeStreak').onclick(); tick(1);");
   assert.equal(run('state.queue[0].timeLeft'), run('beforeTime - 1'));
+});
+
+test('audio is lazy, reuses one context and creates short fading notes only after interaction', async () => {
+  const audio = fakeAudio();
+  const run = createGame(audio);
+  run("sfx.play('arrival'); render();");
+  assert.equal(audio.contexts.length, 0);
+  await run('document.listeners.pointerup({target: null})');
+  run("sfx.play('pack')");
+  const context = audio.contexts[0];
+  assert.equal(context.oscillators.length, 2);
+  assert.ok(context.oscillators.every(note => note.stopTime > note.startTime && note.stopTime - note.startTime < 0.2));
+  assert.ok(context.gains.slice(1).every(gain => gain.gain.events.at(-1)[0] === 'ramp' && gain.gain.events.at(-1)[1] === 0));
+  await run('document.listeners.keydown({target: null})');
+  assert.equal(audio.contexts.length, 1);
+});
+
+test('sound toggle stops current notes and remembers mute across reloads without creating an audio context', async () => {
+  const audio = fakeAudio();
+  const storage = new Map();
+  const run = createGame({ ...audio, storage });
+  await run('document.listeners.pointerup({target: null})');
+  run("sfx.play('level')");
+  const context = audio.contexts[0];
+  await run("$('soundToggle').onclick()");
+  assert.equal(storage.get('soundEnabled'), '0');
+  assert.equal(run("$('soundToggle')['aria-pressed']"), 'false');
+  assert.ok(context.oscillators.every(note => note.stopTime === context.currentTime + 0.03));
+  run("sfx.play('checkout')");
+  assert.equal(context.oscillators.length, 4);
+  const reloaded = createGame({ ...audio, storage });
+  await reloaded('document.listeners.pointerup({target: null})');
+  assert.equal(audio.contexts.length, 1);
+  assert.match(reloaded("$('soundToggle').textContent"), /Ton aus/);
+  await reloaded("$('soundToggle').onclick()");
+  assert.equal(audio.contexts.length, 2);
+  assert.equal(storage.get('soundEnabled'), '1');
+  assert.equal(audio.contexts[1].oscillators.length, 1);
+});
+
+test('hidden pages do not play sounds, silence current notes, and restore volume when visible', async () => {
+  const audio = fakeAudio();
+  const run = createGame(audio);
+  await run('document.listeners.pointerup({target: null})');
+  run("sfx.play('arrival'); document.hidden = true; document.listeners.visibilitychange(); sfx.play('checkout');");
+  const context = audio.contexts[0];
+  assert.equal(context.oscillators.length, 2);
+  assert.ok(context.oscillators.every(note => note.stopTime === context.currentTime + 0.03));
+  run("document.hidden = false; document.listeners.visibilitychange(); sfx.play('send');");
+  assert.equal(context.gains[0].gain.events.at(-1)[1], 0.25);
+  assert.equal(context.oscillators.length, 5);
+});
+
+test('audio failures are visible and retryable without blocking gameplay, and unsupported browsers remain playable', async () => {
+  const unsupported = createGame();
+  assert.equal(unsupported("$('soundToggle').disabled"), true);
+  assert.match(unsupported("$('soundStatus').textContent"), /unterstützt keine Spielsounds/);
+  const options = { failResume: true };
+  const audio = fakeAudio(options);
+  const warnings = [];
+  const run = createGame({ ...audio, console: { warn: (...args) => warnings.push(args) } });
+  await run('document.listeners.pointerup({target: null})');
+  assert.equal(warnings.length, 1);
+  assert.equal(run("$('soundStatus').hidden"), false);
+  assert.match(run("$('soundToggle').textContent"), /Ton versuchen/);
+  run("selectCustomer(state.queue[0].id); chooseBox('small'); packItem('pot1');");
+  assert.equal(run('state.box.length'), 1);
+  options.failResume = false;
+  await run("$('soundToggle').onclick()");
+  assert.equal(run("$('soundStatus').hidden"), true);
+  assert.equal(audio.contexts.length, 1);
+  options.failOscillator = true;
+  run("packItem('pot1')");
+  assert.equal(run('state.box.length'), 2);
+  assert.equal(warnings.length, 2);
+  assert.equal(run("$('soundStatus').hidden"), false);
+});
+
+test('rapid sounds have bounded simultaneous notes and finished voices are released', async () => {
+  const audio = fakeAudio();
+  const run = createGame(audio);
+  await run('document.listeners.pointerup({target: null})');
+  run("for (let i=0; i<100; i++) sfx.play('cart')");
+  const context = audio.contexts[0];
+  assert.equal(context.oscillators.length, 16);
+  for (const note of context.oscillators) note.onended();
+  assert.ok(context.oscillators.every(note => note.disconnected));
+  run("sfx.play('checkout')");
+  assert.equal(context.oscillators.length, 19);
+});
+
+test('game sounds follow committed actions and customer changes, not rendering or rejected actions', () => {
+  const run = createGame();
+  run(`globalThis.sounds = []; sfx.play = name => sounds.push(name);
+    state.queue = []; state.spawnT = 0; tick(1); render(); render(); tick(1);`);
+  assert.deepEqual(JSON.parse(run('JSON.stringify(sounds)')), ['arrival']);
+  run("selectCustomer(state.queue[0].id); chooseBox('small'); packItem('pot1'); packItem('sword');");
+  assert.deepEqual(JSON.parse(run('JSON.stringify(sounds.slice(-3))')), ['select', 'box', 'pack']);
+  run(`sounds.length = 0; state.queue = [{...generateCustomer(), timeLeft:0.1}]; state.spawnT = 0; tick(1);`);
+  assert.deepEqual(JSON.parse(run('JSON.stringify(sounds)')), ['leave']);
+
+  const shop = createShoppingGame();
+  shop(`globalThis.sounds = []; sfx.play = name => sounds.push(name);
+    addToCart('pot1'); state.gold = 0; checkout();`);
+  assert.deepEqual(JSON.parse(shop('JSON.stringify(sounds)')), ['cart']);
+  shop('state.gold = 500; checkout(); checkout();');
+  assert.deepEqual(JSON.parse(shop('JSON.stringify(sounds)')), ['cart', 'checkout']);
+});
+
+test('checkpoint jingle takes precedence over level-up and send; merchant chime waits until the result is closed', () => {
+  const run = createGame();
+  run(`globalThis.sounds = []; sfx.play = name => sounds.push(name);
+    state.exp = 95; state.streak = 9; state.completed = 4;
+    selectCustomer(state.queue[0].id); chooseBox('small');
+    state.active.needs = [{attr:'hp', target:10, prio:1}];
+    packItem('pot1'); sounds.length = 0; send(); send();`);
+  assert.deepEqual(JSON.parse(run('JSON.stringify(sounds)')), ['checkpoint']);
+  run("$('next').onclick()");
+  assert.deepEqual(JSON.parse(run('JSON.stringify(sounds)')), ['checkpoint', 'merchant']);
 });

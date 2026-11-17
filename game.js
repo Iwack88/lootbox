@@ -301,6 +301,7 @@ function addToCart(id) {
   const restoreFocus = document.activeElement?.closest('#shop .shop-item')?.dataset.id === id;
   $('checkoutMessage').textContent = '';
   state.cart[id] = (state.cart[id] || 0) + 1;
+  sfx.play('cart');
   render();
   if (restoreFocus) {
     const button = $('shop').querySelector(`[data-id="${id}"]`);
@@ -313,6 +314,7 @@ function removeFromCart(id) {
   $('checkoutMessage').textContent = '';
   state.cart[id]--;
   if (state.cart[id] === 0) delete state.cart[id];
+  sfx.play('remove');
   render();
 }
 
@@ -330,6 +332,7 @@ function checkout() {
   }
   state.cart = {};
   $('checkoutMessage').textContent = `Einkauf abgeschlossen: ${total} Gold bezahlt.`;
+  sfx.play('checkout');
   render();
 }
 
@@ -341,6 +344,7 @@ function finishShopping() {
   state.activeDiscount = null;
   $('checkoutMessage').textContent = '';
   $('queueCard').open = true;
+  sfx.play('select');
   render();
 }
 
@@ -356,6 +360,7 @@ function emergencyRestock() {
   for (const id of ids) state.inventory[id] = (state.inventory[id] || 0) + 1;
   $('restockResult').textContent = 'Erhalten: ' + ids.map(id => ITEMS.find(it => it.id === id).name).join(', ');
   $('inventoryCard').open = true;
+  sfx.play('checkout');
   render();
 }
 
@@ -364,12 +369,14 @@ function packItem(id) {
   if (!it || !isUnlocked(it) || !state.active || !state.boxType || !state.inventory[id] || usedSlots() >= capacity()) return;
   state.inventory[id]--;
   state.box.push(it);
+  sfx.play('pack');
   render();
 }
 
 function removeFromBox(index) {
   const [it] = state.box.splice(index, 1);
   state.inventory[it.id] = (state.inventory[it.id] || 0) + 1;
+  sfx.play('remove');
   render();
 }
 
@@ -390,6 +397,7 @@ function selectCustomer(id) {
     $('inventoryCard').open = false;
   }
   openDesktopPanels();
+  sfx.play('select');
   render();
 }
 
@@ -400,6 +408,7 @@ function chooseBox(id) {
   returnBoxToInventory();
   state.boxType = type;
   $('inventoryCard').open = true;
+  sfx.play('box');
   render();
 }
 
@@ -423,6 +432,7 @@ function send() {
     : '';
   if (r.item) state.inventory[r.item.id] = (state.inventory[r.item.id] || 0) + 1;
   const bonuses = changeStreak(r.points);
+  sfx.play(bonuses.length ? 'checkpoint' : newLevel > previousLevel ? 'level' : 'send');
   state.box = [];
   state.boxType = null;
   state.active = null;
@@ -451,6 +461,7 @@ function send() {
     $('result').classList.add('hidden');
     if (!state.shopping && autoCollapse) $('queueCard').open = true;
     render();
+    if (state.shopping) sfx.play('merchant');
   };
 }
 
@@ -460,8 +471,10 @@ function tick(dt) {
   for (const c of state.queue) c.timeLeft -= dt;
   const before = state.queue.length;
   state.queue = state.queue.filter(c => c.timeLeft > 0);
-  if (state.queue.length !== before) {
-    changeStreak(state.queue.length - before);
+  const departed = before - state.queue.length;
+  if (departed) {
+    changeStreak(-departed);
+    sfx.play('leave');
     renderStreak();
     changed = true;
   }
@@ -469,6 +482,7 @@ function tick(dt) {
   state.spawnT -= dt;
   if (state.spawnT <= 0 && state.queue.length < queueCapacity()) {
     state.queue.push(generateCustomer());
+    if (!departed) sfx.play('arrival');
     state.spawnT = SPAWN_INTERVAL;
     changed = true;
   }

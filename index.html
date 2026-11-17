@@ -6,13 +6,14 @@
 <meta name="theme-color" content="#1b1a2e">
 <meta http-equiv="Cache-Control" content="no-cache">
 <title>Lootbox Packer</title>
-<link rel="stylesheet" href="style.css?v=16">
+<link rel="stylesheet" href="style.css?v=17">
 </head>
 <body>
 <header>
   <span>💰 <b id="gold">0</b></span>
   <span>⭐ Level <b id="level">1</b></span>
   <button id="showRoadmap" class="secondary">Roadmap</button>
+  <button id="soundToggle" class="secondary sound-toggle" aria-pressed="true">🔊 Ton an</button>
   <section class="streak-status" aria-label="Erfolgsserie">
     <div class="streak-heading"><span>🔥 Serie: <b id="streakPoints">0</b> Punkte</span><button id="showStreak" class="secondary" aria-haspopup="dialog" aria-controls="streakDialog">Boni</button></div>
     <div class="streak-track">
@@ -24,6 +25,7 @@
     <span id="streakDiscounts"></span>
   </section>
 </header>
+<p id="soundStatus" class="hint" role="status" hidden></p>
 
 <div class="level-status">
   <span>EXP: <b id="exp">0/100</b></span>
@@ -89,7 +91,9 @@
   <div class="shop-links">
     <button id="shopRoadmap" class="secondary">Freischaltungen</button>
     <button id="shopStreak" class="secondary">Serien-Boni</button>
+    <button id="shopSoundToggle" class="secondary sound-toggle" aria-pressed="true">🔊 Ton an</button>
   </div>
+  <p id="shopSoundStatus" class="hint" role="status" hidden></p>
   <div class="merchant-content">
     <section class="shop-column">
       <h3>Waren</h3>
@@ -129,6 +133,7 @@
 <button id="send" class="primary fab">📦 Absenden</button>
 
 <div id="result" class="overlay hidden"></div>
-<script src="game.js?v=16"></script>
+<script src="sound.js?v=17"></script>
+<script src="game.js?v=17"></script>
 </body>
 </html>
