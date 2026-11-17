@@ -57,7 +57,7 @@ const RARITY = {
   rare:   { label: 'Selten',     mult: 2, time: 75, scale: 1.25, weight: 22 },
   epic:   { label: 'Episch',     mult: 4, time: 60, scale: 1,    weight: 8 },
 };
-const QUEUE_SIZE = 5;
+const QUEUE_SIZE = 3;
 const SPAWN_INTERVAL = 5;
 
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
@@ -80,7 +80,7 @@ function generateCustomer() {
   return { id: nextId++, name: pick(NAMES), cls: base.cls, icon: base.icon, needs, rarity, timeLeft: def.time, maxTime: def.time };
 }
 
-const state = { gold: 30, exp: 0, boxType: null, box: [], active: null, queue: [], spawnT: 0 };
+const state = { gold: 100, exp: 0, boxType: null, box: [], active: null, queue: [], spawnT: 0 };
 
 const capacity = () => state.boxType ? state.boxType.capacity : 0;
 
