@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1b1a2e">
 <meta http-equiv="Cache-Control" content="no-cache">
 <title>Lootbox Packer</title>
-<link rel="stylesheet" href="style.css?v=11">
+<link rel="stylesheet" href="style.css?v=12">
 </head>
 <body>
 <header>
@@ -41,7 +41,8 @@
 
 <details class="card" id="boxCard" open>
   <summary>Box <small id="slotInfo"></small></summary>
-  <div class="bar weight"><div id="weightBar"></div></div>
+  <div class="bar capacity-bar"><div id="capacityBar"></div></div>
+  <div id="boxEffects" class="box-effects"></div>
   <div id="box" class="box"></div>
   <div id="preview" class="preview"></div>
 </details>
@@ -87,6 +88,6 @@
 <button id="send" class="primary fab">📦 Absenden</button>
 
 <div id="result" class="overlay hidden"></div>
-<script src="game.js?v=11"></script>
+<script src="game.js?v=12"></script>
 </body>
 </html>

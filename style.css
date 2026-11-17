@@ -18,15 +18,16 @@ small { opacity: .7; font-weight: 400; }
 .bar { height: 12px; background: #15142a; border-radius: 99px; overflow: hidden; }
 .bar > div { height: 100%; background: #4cc38a; transition: width .2s; }
 
-.weight { height: 16px; margin-bottom: 10px; }
-.weight > div { background: #6c63ff; }
-.weight > div.full { background: #ffd166; }
+.capacity-bar { height: 16px; margin-bottom: 10px; }
+.capacity-bar > div { background: #6c63ff; }
+.capacity-bar > div.full { background: #ffd166; }
+.box-effects { margin: 0 0 10px; font-size: 13px; color: #ffd166; }
 .box { display: flex; flex-direction: column; gap: 6px; }
 .box-item { display: flex; align-items: center; gap: 10px; background: #34325c; border: 0; border-radius: 10px; color: inherit; font: inherit; font-size: 14px; padding: 8px 10px; text-align: left; touch-action: manipulation; }
 .box-item:active { transform: scale(.98); }
 .box-item .ico { font-size: 22px; }
 .box-item .txt { flex: 1; }
-.box-item .kg { opacity: .8; }
+.box-item .remove { opacity: .65; }
 .empty { text-align: center; opacity: .5; font-size: 14px; padding: 10px; }
 .hint { margin: 0 0 10px; font-size: 13px; opacity: .8; }
 .merchant-status { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
@@ -118,7 +119,7 @@ body { padding-bottom: 90px; }
 .queue-item .txt .needs { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 3px; }
 .game-layout, .panel-column { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .card, .txt { min-width: 0; }
-.shop-item .cost, .queue-item .secs, .box-item .kg { flex-shrink: 0; }
+.shop-item .cost, .queue-item .secs, .box-item .remove { flex-shrink: 0; }
 .need-head { flex-wrap: wrap; gap: 4px; }
 
 @media (min-width: 900px) {

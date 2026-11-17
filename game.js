@@ -15,22 +15,22 @@ const ATTRS = {
   armor: { name: 'Rüstung',  icon: '🛡️' },
 };
 
-// Größere Items sind pro kg effizienter, kosten aber deutlich mehr Gold.
+// Alle Items belegen einen Slot; stärkere Varianten kosten mehr Gold.
 const ITEMS = [
-  { id: 'pot1',   name: 'Kleiner Heiltrank', icon: '🧪', attr: 'hp',    value: 10, weight: 1, cost: 5 },
-  { id: 'pot2',   name: 'Heiltrank',         icon: '🧪', attr: 'hp',    value: 25, weight: 2, cost: 18 },
-  { id: 'pot3',   name: 'Großer Heiltrank',  icon: '🍶', attr: 'hp',    value: 50, weight: 3, cost: 45 },
-  { id: 'dag',    name: 'Dolch',             icon: '🗡️', attr: 'melee', value: 8,  weight: 1, cost: 6 },
-  { id: 'sword',  name: 'Schwert',           icon: '⚔️', attr: 'melee', value: 20, weight: 2, cost: 22 },
-  { id: 'shield', name: 'Holzschild',        icon: '🛡️', attr: 'armor', value: 10, weight: 1, cost: 8 },
-  { id: 'plate',  name: 'Plattenrüstung',    icon: '🥋', attr: 'armor', value: 30, weight: 3, cost: 40 },
-  { id: 'wand',   name: 'Zauberstab',        icon: '🪄', attr: 'magic', value: 15, weight: 1, cost: 10 },
+  { id: 'pot1',   name: 'Kleiner Heiltrank', icon: '🧪', attr: 'hp',    value: 10, cost: 5 },
+  { id: 'pot2',   name: 'Heiltrank',         icon: '🧪', attr: 'hp',    value: 25, cost: 18 },
+  { id: 'pot3',   name: 'Großer Heiltrank',  icon: '🍶', attr: 'hp',    value: 50, cost: 45 },
+  { id: 'dag',    name: 'Kurzschwert',       icon: '🗡️', attr: 'melee', value: 8,  cost: 6 },
+  { id: 'sword',  name: 'Schwert',           icon: '⚔️', attr: 'melee', value: 15, cost: 20 },
+  { id: 'shield', name: 'Holzschild',        icon: '🛡️', attr: 'armor', value: 10, cost: 8 },
+  { id: 'plate',  name: 'Plattenrüstung',    icon: '🥋', attr: 'armor', value: 30, cost: 40 },
+  { id: 'wand',   name: 'Zauberstab',        icon: '🪄', attr: 'magic', value: 15, cost: 10 },
 ];
 
 const BOXES = [
-  { id: 'small',  name: 'Kleine Kiste',   icon: '📦', capacity: 10, exp: 0 },
-  { id: 'medium', name: 'Mittlere Kiste', icon: '🧰', capacity: 18, exp: 60 },
-  { id: 'large',  name: 'Große Truhe',    icon: '🗄️', capacity: 30, exp: 200 },
+  { id: 'small',  name: 'Kleine Kiste',   icon: '📦', slots: 3, exp: 0, modifiers: {} },
+  { id: 'medium', name: 'Mittlere Kiste', icon: '🧰', slots: 5, exp: 60, modifiers: {} },
+  { id: 'magic',  name: 'Magie-Kiste',    icon: '🔮', slots: 3, exp: 100, modifiers: { magic: 5, melee: -10 } },
 ];
 
 const NEED_WEIGHT = { 3: 3, 2: 2, 1: 1 };
@@ -137,12 +137,15 @@ const state = {
   shopping: true, completed: 0, debt: 0, showingResult: false,
 };
 
-const capacity = () => state.boxType ? state.boxType.capacity : 0;
+const capacity = () => state.boxType ? state.boxType.slots : 0;
 
-const usedWeight = () => state.box.reduce((s, i) => s + i.weight, 0);
+const usedSlots = () => state.box.length;
 
 function totals() {
   const t = {};
+  if (state.boxType) {
+    for (const [attr, value] of Object.entries(state.boxType.modifiers)) t[attr] = value;
+  }
   for (const it of state.box) t[it.attr] = (t[it.attr] || 0) + it.value;
   return t;
 }
@@ -153,18 +156,25 @@ function quality() {
   let sum = 0, wsum = 0;
   for (const n of state.active.needs) {
     const w = NEED_WEIGHT[n.prio];
-    sum += w * Math.min(1, (t[n.attr] || 0) / n.target);
+    sum += w * Math.min(1, Math.max(0, t[n.attr] || 0) / n.target);
     wsum += w;
   }
   return sum / wsum;
 }
 
-const rewardFor = (q, c) => {
+const rewardFor = (q, c, hasPackedItems = state.box.length > 0) => {
   const m = RARITY[c.rarity].mult;
   const eligible = c.itemRewards.filter(reward => q >= reward.quality);
-  const item = eligible.length ? eligible[eligible.length - 1].item : null;
+  const item = hasPackedItems && eligible.length ? eligible[eligible.length - 1].item : null;
   return { gold: Math.round((10 + q * 30) * m), exp: Math.round((5 + q * 15) * m), item };
 };
+
+function boxEffectsText(box) {
+  const effects = Object.entries(box.modifiers)
+    .map(([attr, value]) => `${ATTRS[attr].icon} ${ATTRS[attr].name}: ${value > 0 ? '+' : ''}${value}`)
+    .join(' · ');
+  return effects || 'Neutral';
+}
 
 function returnBoxToInventory() {
   for (const it of state.box) {
@@ -238,7 +248,7 @@ function emergencyRestock() {
 
 function packItem(id) {
   const it = ITEMS.find(i => i.id === id);
-  if (!it || !state.active || !state.boxType || !state.inventory[id] || usedWeight() + it.weight > capacity()) return;
+  if (!it || !state.active || !state.boxType || !state.inventory[id] || usedSlots() >= capacity()) return;
   state.inventory[id]--;
   state.box.push(it);
   render();
@@ -344,7 +354,7 @@ function updateTimers() {
 
 function needsHtml(c, t) {
   return c.needs.map(n => {
-    const have = t[n.attr] || 0;
+    const have = Math.max(0, t[n.attr] || 0);
     const pct = Math.min(100, have / n.target * 100);
     return `<div class="need">
       <div class="need-head"><span>${ATTRS[n.attr].icon} ${ATTRS[n.attr].name} <span class="prio p${n.prio}">${PRIO_LABEL[n.prio]}</span></span><span>${have}/${n.target}</span></div>
@@ -398,20 +408,21 @@ function render() {
     : 'Der Händler kommt nach fünf abgeschlossenen Aufträgen wieder. Nutze bis dahin dein Inventar oder den Notfall-Restock.';
   $('restock').disabled = state.shopping || state.showingResult || (state.debt > 0 && state.gold < RESTOCK_COST);
   $('restock').textContent = `Notfall-Restock · ${RESTOCK_COST} Gold`;
-  $('restockHint').textContent = `${RESTOCK_SIZE} zufällige Basis-Items: kleiner Heiltrank, Dolch, Holzschild oder Zauberstab. Mindestens zwei Attribute. Fehlendes Gold wird als Vorschuss mit künftigen Goldbelohnungen verrechnet. ${state.debt ? 'Kein weiterer Vorschuss, bis die offene Gebühr bezahlt ist.' : ''}`;
+  $('restockHint').textContent = `${RESTOCK_SIZE} zufällige Basis-Items: kleiner Heiltrank, Kurzschwert, Holzschild oder Zauberstab. Mindestens zwei Attribute. Fehlendes Gold wird als Vorschuss mit künftigen Goldbelohnungen verrechnet. ${state.debt ? 'Kein weiterer Vorschuss, bis die offene Gebühr bezahlt ist.' : ''}`;
 
   $('customer').innerHTML = c
     ? `<div class="cust-name r-${c.rarity} tier-${c.tier}">${c.icon} ${c.name} <small>${c.cls} · ${c.tierLabel} · ${RARITY[c.rarity].label}</small></div>` + needsHtml(c, totals()) + itemRewardsHtml(c)
     : '<div class="empty">Wähle einen Kunden aus der Liste</div>';
 
-  const used = usedWeight();
+  const used = usedSlots();
   $('box').innerHTML = state.box.length
-    ? state.box.map((it, i) => `<button class="box-item" data-i="${i}"><span class="ico">${it.icon}</span><span class="txt">${it.name}</span><span class="kg">${it.weight} kg ✕</span></button>`).join('')
+    ? state.box.map((it, i) => `<button class="box-item" data-i="${i}"><span class="ico">${it.icon}</span><span class="txt">${it.name}</span><span class="remove">✕</span></button>`).join('')
     : `<div class="empty">${state.boxType ? 'Leer – packe Items aus deinem Inventar ein' : 'Wähle zuerst eine Box'}</div>`;
   $('box').querySelectorAll('.box-item').forEach(el => el.onclick = () => removeFromBox(+el.dataset.i));
-  $('slotInfo').textContent = state.boxType ? `${used}/${capacity()} kg` : '';
-  $('weightBar').style.width = capacity() ? `${used / capacity() * 100}%` : '0%';
-  $('weightBar').classList.toggle('full', capacity() > 0 && used >= capacity());
+  $('slotInfo').textContent = state.boxType ? `${used}/${capacity()} Items` : '';
+  $('boxEffects').textContent = state.boxType ? `Kisteneffekt: ${boxEffectsText(state.boxType)}` : '';
+  $('capacityBar').style.width = capacity() ? `${used / capacity() * 100}%` : '0%';
+  $('capacityBar').classList.toggle('full', capacity() > 0 && used >= capacity());
 
   if (c) {
     const q = quality(), r = rewardFor(q, c);
@@ -432,7 +443,7 @@ function render() {
     const inCart = state.cart[it.id] || 0;
     return `<div class="shop-row">
       <span class="ico">${it.icon}</span>
-      <span class="txt">${it.name}<small>${ATTRS[it.attr].icon} +${it.value} · ${it.weight} kg · Im Lager: ${state.inventory[it.id] || 0} · Im Warenkorb: ${inCart}</small></span>
+      <span class="txt">${it.name}<small>${ATTRS[it.attr].icon} +${it.value} · 1 Item · Im Lager: ${state.inventory[it.id] || 0} · Im Warenkorb: ${inCart}</small></span>
       <span class="cost">💰 ${it.cost}</span>
       <button class="add-item" data-id="${it.id}" aria-label="${it.name} in den Warenkorb legen">＋</button>
     </div>`;
@@ -461,10 +472,10 @@ function renderInventory() {
   const owned = ITEMS.filter(it => state.inventory[it.id] > 0);
   $('inventory').innerHTML = owned.length
     ? owned.map(it => {
-        const off = !state.active || !state.boxType || usedWeight() + it.weight > capacity();
+        const off = !state.active || !state.boxType || usedSlots() >= capacity();
         return `<button class="shop-item" data-id="${it.id}" ${off ? 'disabled' : ''}>
           <span class="ico">${it.icon}</span>
-          <span class="txt">${it.name}<small>${ATTRS[it.attr].icon} +${it.value} · ${it.weight} kg · In Box legen</small></span>
+          <span class="txt">${it.name}<small>${ATTRS[it.attr].icon} +${it.value} · 1 Item · In Box legen</small></span>
           <span class="cost">×${state.inventory[it.id]}</span>
         </button>`;
       }).join('')
@@ -480,7 +491,7 @@ function renderPicker() {
         const sel = state.boxType && state.boxType.id === b.id;
         return `<button class="pick-item${sel ? ' selected' : ''}" data-bid="${b.id}" ${locked ? 'disabled' : ''}>
           <span class="ico">${b.icon}</span>
-          <span class="txt">${b.name}<small>${b.capacity} kg</small></span>
+          <span class="txt">${b.name}<small>${b.slots} Items · ${boxEffectsText(b)}</small></span>
           <span class="req">${locked ? '🔒 ' + b.exp + ' EXP' : sel ? '✔' : ''}</span>
         </button>`;
       }).join('');

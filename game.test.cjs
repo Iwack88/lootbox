@@ -56,17 +56,17 @@ test('purchases fill inventory without a customer or box; packing spends no gold
   assert.match(run("$('preview').innerHTML"), /Itemkosten: 0/);
 });
 
-test('inventory and weight limit packing; merchant is unavailable during the round', () => {
+test('inventory and item-count capacity; merchant is unavailable during the round', () => {
   const run = createGame();
   run("for (let i = 0; i < 12; i++) addToCart('pot1'); checkout(); finishShopping(); selectCustomer(state.queue[0].id); chooseBox('small');");
   run("for (let i = 0; i < 12; i++) packItem('pot1');");
-  assert.equal(run('usedWeight()'), 10);
-  assert.equal(run('state.inventory.pot1'), 2);
+  assert.equal(run('usedSlots()'), 3);
+  assert.equal(run('state.inventory.pot1'), 9);
   run("addToCart('pot1'); checkout()");
-  assert.equal(run('state.inventory.pot1'), 2);
-  assert.equal(run('state.box.length'), 10);
+  assert.equal(run('state.inventory.pot1'), 9);
+  assert.equal(run('state.box.length'), 3);
   run("packItem('wand')");
-  assert.equal(run('state.box.length'), 10);
+  assert.equal(run('state.box.length'), 3);
   run("addToCart('pot3'); checkout()");
   assert.equal(run('state.gold'), 440);
 });
@@ -97,13 +97,13 @@ test('item reward thresholds respect rarity and upgrade rather than accumulate',
   for (const [tier, rarity, levels] of [['wannabe', 'common', 1], ['adventurer', 'common', 1], ['hero', 'rare', 2], ['demigod', 'epic', 3]]) {
     run(`globalThis.rollCustomerTier = () => CUSTOMER_TIERS.find(t => t.id === '${tier}'); globalThis.customer = generateCustomer();`);
     assert.equal(run('customer.itemRewards.length'), levels);
-    assert.equal(run('rewardFor(0, customer).item'), null);
-    assert.equal(run('rewardFor(0.299999, customer).item'), null);
+    assert.equal(run('rewardFor(0, customer, true).item'), null);
+    assert.equal(run('rewardFor(0.299999, customer, true).item'), null);
     for (let i = 0; i < levels; i++) {
-      assert.equal(run(`rewardFor(customer.itemRewards[${i}].quality, customer).item.id`),
+    assert.equal(run(`rewardFor(customer.itemRewards[${i}].quality, customer, true).item.id`),
         run(`customer.itemRewards[${i}].item.id`));
     }
-    assert.equal(run('rewardFor(1, customer).item.id'), run(`customer.itemRewards[${levels - 1}].item.id`));
+    assert.equal(run('rewardFor(1, customer, true).item.id'), run(`customer.itemRewards[${levels - 1}].item.id`));
   }
 });
 
@@ -159,6 +159,34 @@ test('customers are distributed across four tiers with easy wannabes and stronge
   assert.equal(run('demigod.tierLabel'), 'Demi-Gott');
   assert.ok(run('demigod.needs.every(need => need.target >= 70)'));
   assert.equal(run('state.gold'), 500);
+});
+
+test('boxes count each item as one slot and apply neutral or magical modifiers', () => {
+  const run = createGame();
+  assert.deepEqual(JSON.parse(run('JSON.stringify(BOXES.map(box => [box.id, box.slots, box.exp]))')), [
+    ['small', 3, 0],
+    ['medium', 5, 60],
+    ['magic', 3, 100],
+  ]);
+  assert.ok(run('ITEMS.every(item => item.weight === undefined)'));
+  run(`globalThis.rollCustomerTier = () => CUSTOMER_TIERS.find(t => t.id === 'wannabe');
+    state.queue = [generateCustomer()];
+    addToCart('dag'); addToCart('dag'); addToCart('sword'); checkout(); finishShopping();
+    selectCustomer(state.queue[0].id); chooseBox('small');
+    packItem('dag'); packItem('dag');`);
+  assert.equal(run('usedSlots()'), 2);
+  assert.equal(run('state.box.reduce((sum, item) => sum + item.value, 0)'), 16);
+  assert.equal(run('state.box.reduce((sum, item) => sum + item.cost, 0)'), 12);
+  assert.equal(run('state.inventory.sword'), 1);
+  run("state.exp = 100; chooseBox('magic');");
+  assert.equal(run('usedSlots()'), 0);
+  assert.equal(run('totals().magic'), 5);
+  assert.equal(run('totals().melee'), -10);
+  run("state.active.needs = [{attr:'magic', target:10, prio:1}, {attr:'melee', target:10, prio:1}];");
+  assert.equal(run('quality()'), 0.25);
+  assert.match(run("$('boxEffects').textContent"), /Magie: \+5/);
+  assert.match(run("$('boxEffects').textContent"), /Nahkampf: -10/);
+  assert.equal(run('rewardFor(1, state.active).item'), null);
 });
 
 test('merchant pauses customers, blocks selection, and returns after exactly five deliveries each round', () => {
