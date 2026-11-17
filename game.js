@@ -17,20 +17,20 @@ const ATTRS = {
 
 // Alle Items belegen einen Slot; stärkere Varianten kosten mehr Gold.
 const ITEMS = [
-  { id: 'pot1',   name: 'Kleiner Heiltrank', icon: '🧪', attr: 'hp',    value: 10, cost: 5 },
-  { id: 'pot2',   name: 'Heiltrank',         icon: '🧪', attr: 'hp',    value: 25, cost: 18 },
-  { id: 'pot3',   name: 'Großer Heiltrank',  icon: '🍶', attr: 'hp',    value: 50, cost: 45 },
-  { id: 'dag',    name: 'Kurzschwert',       icon: '🗡️', attr: 'melee', value: 8,  cost: 6 },
-  { id: 'sword',  name: 'Schwert',           icon: '⚔️', attr: 'melee', value: 15, cost: 20 },
-  { id: 'shield', name: 'Holzschild',        icon: '🛡️', attr: 'armor', value: 10, cost: 8 },
-  { id: 'plate',  name: 'Plattenrüstung',    icon: '🥋', attr: 'armor', value: 30, cost: 40 },
-  { id: 'wand',   name: 'Zauberstab',        icon: '🪄', attr: 'magic', value: 15, cost: 10 },
+  { id: 'pot1',   name: 'Kleiner Heiltrank', icon: '🧪', attr: 'hp',    value: 10, cost: 5, level: 1 },
+  { id: 'pot2',   name: 'Heiltrank',         icon: '🧪', attr: 'hp',    value: 25, cost: 18, level: 2 },
+  { id: 'pot3',   name: 'Großer Heiltrank',  icon: '🍶', attr: 'hp',    value: 50, cost: 45, level: 4 },
+  { id: 'dag',    name: 'Kurzschwert',       icon: '🗡️', attr: 'melee', value: 8,  cost: 6, level: 1 },
+  { id: 'sword',  name: 'Schwert',           icon: '⚔️', attr: 'melee', value: 15, cost: 20, level: 2 },
+  { id: 'shield', name: 'Holzschild',        icon: '🛡️', attr: 'armor', value: 10, cost: 8, level: 1 },
+  { id: 'plate',  name: 'Plattenrüstung',    icon: '🥋', attr: 'armor', value: 30, cost: 40, level: 4 },
+  { id: 'wand',   name: 'Zauberstab',        icon: '🪄', attr: 'magic', value: 15, cost: 10, level: 1 },
 ];
 
 const BOXES = [
-  { id: 'small',  name: 'Kleine Kiste',   icon: '📦', slots: 3, exp: 0, modifiers: {} },
-  { id: 'medium', name: 'Mittlere Kiste', icon: '🧰', slots: 5, exp: 60, modifiers: {} },
-  { id: 'magic',  name: 'Magie-Kiste',    icon: '🔮', slots: 3, exp: 100, modifiers: { magic: 5, melee: -10 } },
+  { id: 'small',  name: 'Kleine Kiste',   icon: '📦', slots: 3, level: 1, modifiers: {} },
+  { id: 'medium', name: 'Mittlere Kiste', icon: '🧰', slots: 5, level: 3, modifiers: {} },
+  { id: 'magic',  name: 'Magie-Kiste',    icon: '🔮', slots: 3, level: 4, modifiers: { magic: 5, melee: -10 } },
 ];
 
 const NEED_WEIGHT = { 3: 3, 2: 2, 1: 1 };
@@ -75,13 +75,17 @@ const DEMIGOD_CLASSES = [
   { cls: 'Sonnengott',      icon: '☀️', needs: [ { attr: 'magic', prio: 3, target: 120 }, { attr: 'hp', prio: 3, target: 90 }, { attr: 'melee', prio: 2, target: 60 } ] },
 ];
 
-// mult: Belohnungsfaktor, time: Sekunden bis der Kunde geht, scale: Skalierung der Zielwerte
+// Belohnungsfaktor und Standard-Wartezeit je Seltenheit.
 const RARITY = {
   common: { label: 'Gewöhnlich', mult: 1, time: 90 },
   rare:   { label: 'Selten',     mult: 2, time: 75 },
   epic:   { label: 'Episch',     mult: 4, time: 60 },
 };
-const QUEUE_SIZE = 3;
+const CUSTOMER_PLACES = [
+  { level: 1, count: 3 },
+  { level: 3, count: 4 },
+  { level: 6, count: 5 },
+];
 const SPAWN_INTERVAL = 5;
 const MERCHANT_INTERVAL = 5;
 const RESTOCK_COST = 20;
@@ -93,18 +97,53 @@ const ITEM_REWARDS = [
   { quality: 0.9, rarities: ['epic'], ids: ['pot3', 'plate'] },
 ];
 const CUSTOMER_TIERS = [
-  { id: 'wannabe', label: 'Wannabe', weight: 50, scale: 0.6, rarity: 'common', time: 120 },
-  { id: 'adventurer', label: 'Abenteurer', weight: 32, scale: 1, rarity: 'common', time: 90 },
-  { id: 'hero', label: 'Held', weight: 15, scale: 1.2, rarity: 'rare', time: 75 },
-  { id: 'demigod', label: 'Demi-Gott', weight: 3, scale: 1.5, rarity: 'epic', time: 60 },
+  { id: 'wannabe', label: 'Wannabe', level: 1, weight: 50, scale: 0.6, rarity: 'common', time: 120 },
+  { id: 'adventurer', label: 'Abenteurer', level: 2, weight: 32, scale: 1, rarity: 'common', time: 90 },
+  { id: 'hero', label: 'Held', level: 5, weight: 15, scale: 1.2, rarity: 'rare', time: 75 },
+  { id: 'demigod', label: 'Demi-Gott', level: 7, weight: 3, scale: 1.5, rarity: 'epic', time: 60 },
 ];
 
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 
+const expForLevel = level => 50 * level * (level - 1);
+
+function progression(totalExp = state.exp) {
+  let level = 1;
+  while (totalExp >= expForLevel(level + 1)) level++;
+  return { level, current: totalExp - expForLevel(level), required: level * 100 };
+}
+
+const isUnlocked = entry => progression().level >= entry.level;
+
+const queueCapacity = () => CUSTOMER_PLACES.filter(isUnlocked).at(-1).count;
+
+function unlocksAtLevel(level) {
+  return [
+    ...ITEMS.filter(item => item.level === level).map(item => `Item: ${item.icon} ${item.name}`),
+    ...BOXES.filter(box => box.level === level).map(box => `Kiste: ${box.icon} ${box.name} (${box.slots} Items · ${boxEffectsText(box)})`),
+    ...CUSTOMER_TIERS.filter(tier => tier.level === level).map(tier => `Kunden: ${tier.label}`),
+    ...CUSTOMER_PLACES.filter(places => places.level === level).map(places => `${places.count} Kundenplätze`),
+  ];
+}
+
+function renderRoadmap() {
+  const { level } = progression();
+  const lastMilestone = Math.max(...[...ITEMS, ...BOXES, ...CUSTOMER_TIERS, ...CUSTOMER_PLACES].map(entry => entry.level));
+  $('roadmap').innerHTML = Array.from({ length: lastMilestone }, (_, i) => {
+    const milestone = i + 1;
+    return `<section class="milestone ${milestone <= level ? 'unlocked' : 'locked'}">
+      <h3>Level ${milestone} · ${milestone <= level ? 'Freigeschaltet' : 'Gesperrt'}${milestone === level ? ' · Aktuell' : ''}</h3>
+      <small>${expForLevel(milestone)} Gesamt-EXP${milestone > 1 ? ` · ${100 * (milestone - 1)} EXP ab Level ${milestone - 1}` : ''}</small>
+      <ul>${unlocksAtLevel(milestone).map(unlock => `<li>${unlock}</li>`).join('')}</ul>
+    </section>`;
+  }).join('') + '<p class="hint">Weitere Level sind möglich. Zusätzliche Freischaltungen folgen später. Items werden im Shop und als Kundenbelohnungen verfügbar, nicht automatisch ins Inventar gelegt.</p>';
+}
+
 let nextId = 1;
 function rollCustomerTier() {
-  let value = Math.random() * 100;
-  for (const tier of CUSTOMER_TIERS) {
+  const available = CUSTOMER_TIERS.filter(isUnlocked);
+  let value = Math.random() * available.reduce((sum, tier) => sum + tier.weight, 0);
+  for (const tier of available) {
     value -= tier.weight;
     if (value < 0) return tier;
   }
@@ -124,16 +163,16 @@ function generateCustomer() {
   }[tier.id];
   const base = pick(classes);
   const needs = base.needs.map(n => ({ ...n, target: Math.max(5, Math.round(n.target * tier.scale * (0.8 + Math.random() * 0.4) / 5) * 5) }));
-  const itemRewards = ITEM_REWARDS.filter(tier => tier.rarities.includes(rarity))
+  const itemRewards = ITEM_REWARDS.filter(tier => tier.rarities.includes(rarity) && tier.ids.some(id => isUnlocked(ITEMS.find(item => item.id === id))))
     .map(tier => {
-      const id = pick(tier.ids);
+      const id = pick(tier.ids.filter(id => isUnlocked(ITEMS.find(item => item.id === id))));
       return { quality: tier.quality, item: ITEMS.find(it => it.id === id) };
     });
   return { id: nextId++, name: pick(NAMES), cls: base.cls, icon: base.icon, needs, rarity, tier: tier.id, tierLabel: tier.label, itemRewards, timeLeft: tier.time || def.time, maxTime: tier.time || def.time };
 }
 
 const state = {
-  gold: 500, exp: 0, inventory: Object.fromEntries(ITEMS.map(item => [item.id, 5])), cart: {}, boxType: null, box: [], active: null, queue: [], spawnT: 0,
+  gold: 500, exp: 0, inventory: Object.fromEntries(ITEMS.filter(item => item.level === 1).map(item => [item.id, 5])), cart: {}, boxType: null, box: [], active: null, queue: [], spawnT: 0,
   shopping: false, completed: 0, debt: 0, showingResult: false,
 };
 
@@ -189,7 +228,7 @@ const cartTotal = () => ITEMS.reduce((sum, item) => sum + item.cost * (state.car
 
 function addToCart(id) {
   const it = ITEMS.find(i => i.id === id);
-  if (!state.shopping || !it) return;
+  if (!state.shopping || !it || !isUnlocked(it)) return;
   const restoreFocus = document.activeElement?.closest('#shop .shop-item')?.dataset.id === id;
   $('checkoutMessage').textContent = '';
   state.cart[id] = (state.cart[id] || 0) + 1;
@@ -210,6 +249,10 @@ function removeFromCart(id) {
 
 function checkout() {
   if (!state.shopping || cartQuantity() === 0 || cartTotal() > state.gold) return;
+  if (Object.keys(state.cart).some(id => !ITEMS.some(item => item.id === id && isUnlocked(item)))) {
+    $('checkoutMessage').textContent = 'Der Warenkorb enthält noch gesperrte Items.';
+    return;
+  }
   const total = cartTotal();
   const purchases = Object.entries(state.cart);
   state.gold -= total;
@@ -248,7 +291,7 @@ function emergencyRestock() {
 
 function packItem(id) {
   const it = ITEMS.find(i => i.id === id);
-  if (!it || !state.active || !state.boxType || !state.inventory[id] || usedSlots() >= capacity()) return;
+  if (!it || !isUnlocked(it) || !state.active || !state.boxType || !state.inventory[id] || usedSlots() >= capacity()) return;
   state.inventory[id]--;
   state.box.push(it);
   render();
@@ -282,7 +325,7 @@ function selectCustomer(id) {
 
 function chooseBox(id) {
   const type = BOXES.find(b => b.id === id);
-  if (!state.active || !type || state.exp < type.exp) return;
+  if (!state.active || !type || !isUnlocked(type)) return;
   if (state.boxType === type) return;
   returnBoxToInventory();
   state.boxType = type;
@@ -294,10 +337,18 @@ function send() {
   if (state.shopping || state.showingResult || !state.active || !state.boxType) return;
   const q = quality();
   const r = rewardFor(q, state.active);
+  const previousLevel = progression().level;
   const repayment = Math.min(state.debt, r.gold);
   state.debt -= repayment;
   state.gold += r.gold - repayment;
   state.exp += r.exp;
+  const newLevel = progression().level;
+  const levelUp = newLevel > previousLevel
+    ? `<div class="level-up">Levelaufstieg: ${previousLevel} → ${newLevel}!</div>
+       <ul class="new-unlocks">${Array.from({ length: newLevel - previousLevel }, (_, i) =>
+        unlocksAtLevel(previousLevel + i + 1).map(unlock => `<li>${unlock}</li>`).join('')
+       ).join('')}</ul>`
+    : '';
   if (r.item) state.inventory[r.item.id] = (state.inventory[r.item.id] || 0) + 1;
   state.box = [];
   state.boxType = null;
@@ -313,6 +364,7 @@ function send() {
     <h1>${label}</h1>
     <div>Erfüllung: ${Math.round(q * 100)}%</div>
     <div>💰 +${r.gold} &nbsp; ⭐ +${r.exp}</div>
+    ${levelUp}
     ${repayment ? `<div>Vorschuss-Rückzahlung: −${repayment} Gold · Ausgezahlt: ${r.gold - repayment} Gold</div>` : ''}
     <div>${r.item ? `Inventar: +1 ${r.item.icon} ${r.item.name}` : 'Keine Itembelohnung (ab 30% Erfüllung)'}</div>
     <button class="primary" id="next">${state.shopping ? 'Zum Händler' : 'Weiter'}</button>`;
@@ -327,7 +379,7 @@ function send() {
 }
 
 function tick(dt) {
-  if (state.shopping || state.showingResult) return;
+  if (state.shopping || state.showingResult || $('roadmapDialog').open) return;
   let changed = false;
   for (const c of state.queue) c.timeLeft -= dt;
   const before = state.queue.length;
@@ -335,7 +387,7 @@ function tick(dt) {
   if (state.queue.length !== before) changed = true;
 
   state.spawnT -= dt;
-  if (state.spawnT <= 0 && state.queue.length < QUEUE_SIZE) {
+  if (state.spawnT <= 0 && state.queue.length < queueCapacity()) {
     state.queue.push(generateCustomer());
     state.spawnT = SPAWN_INTERVAL;
     changed = true;
@@ -382,14 +434,18 @@ function renderQueue() {
     </button>`;
   }).join('') : '<div class="empty">Gerade keine Kunden…</div>';
   $('queue').querySelectorAll('.queue-item').forEach(el => el.onclick = () => selectCustomer(+el.dataset.cid));
-  $('queueInfo').textContent = `${state.queue.length}/${QUEUE_SIZE}`;
+  $('queueInfo').textContent = `${state.queue.length}/${queueCapacity()}`;
 }
 
 function render() {
   const c = state.active;
   $('gold').textContent = state.gold;
   $('shopGold').textContent = state.gold;
-  $('exp').textContent = state.exp;
+  const progress = progression();
+  $('level').textContent = progress.level;
+  $('exp').textContent = `${progress.current}/${progress.required}`;
+  $('levelProgress').max = progress.required;
+  $('levelProgress').value = progress.current;
   $('merchantStatus').textContent = state.shopping ? 'Händler da · Kundentimer pausiert' : `Händler in ${MERCHANT_INTERVAL - state.completed} Aufträgen`;
   $('merchantProgress').value = state.shopping ? MERCHANT_INTERVAL : state.completed;
   $('debtInfo').textContent = state.debt ? `Offener Vorschuss: ${state.debt} Gold` : '';
@@ -441,11 +497,12 @@ function render() {
 
   $('shop').innerHTML = state.shopping ? ITEMS.map(it => {
     const inCart = state.cart[it.id] || 0;
+    const locked = !isUnlocked(it);
     return `<div class="shop-row">
       <span class="ico">${it.icon}</span>
       <span class="txt">${it.name}<small>${ATTRS[it.attr].icon} +${it.value} · 1 Item · Im Lager: ${state.inventory[it.id] || 0} · Im Warenkorb: ${inCart}</small></span>
       <span class="cost">💰 ${it.cost}</span>
-      <button class="add-item" data-id="${it.id}" aria-label="${it.name} in den Warenkorb legen">＋</button>
+      <button class="add-item" data-id="${it.id}" ${locked ? 'disabled' : ''} aria-label="${it.name} ${locked ? `ab Level ${it.level}` : 'in den Warenkorb legen'}">${locked ? `Lv. ${it.level}` : '＋'}</button>
     </div>`;
   }).join('') : '<div class="empty">Der Händler ist unterwegs.</div>';
   $('shop').querySelectorAll('.add-item').forEach(el => el.onclick = () => addToCart(el.dataset.id));
@@ -472,7 +529,7 @@ function renderInventory() {
   const owned = ITEMS.filter(it => state.inventory[it.id] > 0);
   $('inventory').innerHTML = owned.length
     ? owned.map(it => {
-        const off = !state.active || !state.boxType || usedSlots() >= capacity();
+        const off = !isUnlocked(it) || !state.active || !state.boxType || usedSlots() >= capacity();
         return `<button class="shop-item" data-id="${it.id}" ${off ? 'disabled' : ''}>
           <span class="ico">${it.icon}</span>
           <span class="txt">${it.name}<small>${ATTRS[it.attr].icon} +${it.value} · 1 Item · In Box legen</small></span>
@@ -487,12 +544,12 @@ function renderPicker() {
   $('boxPicker').innerHTML = !state.active
     ? '<div class="empty">Wähle zuerst einen Kunden</div>'
     : BOXES.map(b => {
-        const locked = state.exp < b.exp;
+        const locked = !isUnlocked(b);
         const sel = state.boxType && state.boxType.id === b.id;
         return `<button class="pick-item${sel ? ' selected' : ''}" data-bid="${b.id}" ${locked ? 'disabled' : ''}>
           <span class="ico">${b.icon}</span>
           <span class="txt">${b.name}<small>${b.slots} Items · ${boxEffectsText(b)}</small></span>
-          <span class="req">${locked ? '🔒 ' + b.exp + ' EXP' : sel ? '✔' : ''}</span>
+          <span class="req">${locked ? '🔒 Level ' + b.level : sel ? '✔' : ''}</span>
         </button>`;
       }).join('');
   $('boxPicker').querySelectorAll('.pick-item').forEach(el => el.onclick = () => chooseBox(el.dataset.bid));
@@ -516,7 +573,14 @@ $('finishShopping').onclick = finishShopping;
 $('checkout').onclick = checkout;
 $('shopDialog').addEventListener('cancel', event => event.preventDefault());
 $('restock').onclick = emergencyRestock;
-for (let i = 0; i < 3; i++) state.queue.push(generateCustomer());
+function openRoadmap() {
+  renderRoadmap();
+  $('roadmapDialog').showModal();
+}
+$('showRoadmap').onclick = openRoadmap;
+$('shopRoadmap').onclick = openRoadmap;
+$('closeRoadmap').onclick = () => $('roadmapDialog').close();
+for (let i = 0; i < queueCapacity(); i++) state.queue.push(generateCustomer());
 render();
 let lastT = performance.now();
 setInterval(() => {

@@ -6,13 +6,19 @@
 <meta name="theme-color" content="#1b1a2e">
 <meta http-equiv="Cache-Control" content="no-cache">
 <title>Lootbox Packer</title>
-<link rel="stylesheet" href="style.css?v=13">
+<link rel="stylesheet" href="style.css?v=14">
 </head>
 <body>
 <header>
   <span>💰 <b id="gold">0</b></span>
-  <span>⭐ EXP <b id="exp">0</b></span>
+  <span>⭐ Level <b id="level">1</b></span>
+  <button id="showRoadmap" class="secondary">Roadmap</button>
 </header>
+
+<div class="level-status">
+  <span>EXP: <b id="exp">0/100</b></span>
+  <progress id="levelProgress" max="100" value="0" aria-label="Fortschritt zum nächsten Level"></progress>
+</div>
 
 <div class="merchant-status">
   <span id="merchantStatus"></span>
@@ -69,6 +75,7 @@
     <span>💰 <b id="shopGold">0</b></span>
   </div>
   <p id="shopHint" class="hint"></p>
+  <button id="shopRoadmap" class="secondary">Freischaltungen ansehen</button>
   <div class="merchant-content">
     <section class="shop-column">
       <h3>Waren</h3>
@@ -85,9 +92,18 @@
   <button id="finishShopping" class="primary">Einkauf beenden</button>
 </dialog>
 
+<dialog id="roadmapDialog" class="merchant-dialog roadmap-dialog" aria-labelledby="roadmapTitle">
+  <div class="merchant-heading">
+    <h2 id="roadmapTitle">Level-Roadmap</h2>
+    <button id="closeRoadmap" class="secondary">Schließen</button>
+  </div>
+  <p class="hint">Level 2 braucht 100 EXP, danach kostet jeder Aufstieg 100 EXP mehr. Während dieser Übersicht pausieren die Kundentimer.</p>
+  <div id="roadmap"></div>
+</dialog>
+
 <button id="send" class="primary fab">📦 Absenden</button>
 
 <div id="result" class="overlay hidden"></div>
-<script src="game.js?v=13"></script>
+<script src="game.js?v=14"></script>
 </body>
 </html>

@@ -35,7 +35,7 @@ function createGame(options = {}) {
 
 function createShoppingGame(options = {}) {
   const run = createGame(options);
-  run('state.inventory = {}; state.shopping = true; render();');
+  run('state.inventory = {}; state.exp = expForLevel(7); state.shopping = true; render();');
   return run;
 }
 
@@ -82,7 +82,7 @@ test('box and customer switches return items; sending consumes only packed items
   run("addToCart('pot1'); addToCart('pot1'); checkout(); finishShopping(); selectCustomer(state.queue[0].id); chooseBox('small'); packItem('pot1');");
   run("chooseBox('small')");
   assert.equal(run('state.box.length'), 1);
-  run("state.exp = 60; chooseBox('medium');");
+  run("state.exp = expForLevel(3); chooseBox('medium');");
   assert.equal(run('state.box.length'), 0);
   assert.equal(run('state.inventory.pot1'), 2);
   run("packItem('pot1'); selectCustomer(state.queue[0].id);");
@@ -146,6 +146,7 @@ test('empty or irrelevant boxes grant no items', () => {
 
 test('customers are distributed across four tiers with easy wannabes and strongest demigods', () => {
   const run = createGame();
+  run('state.exp = expForLevel(7)');
   assert.equal(run('CUSTOMER_TIERS.reduce((sum, tier) => sum + tier.weight, 0)'), 100);
   for (const [roll, expected] of [[0, 'wannabe'], [0.5, 'adventurer'], [0.82, 'hero'], [0.97, 'demigod']]) {
     run(`Math.random = () => ${roll}`);
@@ -169,10 +170,10 @@ test('customers are distributed across four tiers with easy wannabes and stronge
 
 test('boxes count each item as one slot and apply neutral or magical modifiers', () => {
   const run = createShoppingGame();
-  assert.deepEqual(JSON.parse(run('JSON.stringify(BOXES.map(box => [box.id, box.slots, box.exp]))')), [
-    ['small', 3, 0],
-    ['medium', 5, 60],
-    ['magic', 3, 100],
+  assert.deepEqual(JSON.parse(run('JSON.stringify(BOXES.map(box => [box.id, box.slots, box.level]))')), [
+    ['small', 3, 1],
+    ['medium', 5, 3],
+    ['magic', 3, 4],
   ]);
   assert.ok(run('ITEMS.every(item => item.weight === undefined)'));
   run(`globalThis.rollCustomerTier = () => CUSTOMER_TIERS.find(t => t.id === 'wannabe');
@@ -184,7 +185,7 @@ test('boxes count each item as one slot and apply neutral or magical modifiers',
   assert.equal(run('state.box.reduce((sum, item) => sum + item.value, 0)'), 16);
   assert.equal(run('state.box.reduce((sum, item) => sum + item.cost, 0)'), 12);
   assert.equal(run('state.inventory.sword'), 1);
-  run("state.exp = 100; chooseBox('magic');");
+  run("state.exp = expForLevel(4); chooseBox('magic');");
   assert.equal(run('usedSlots()'), 0);
   assert.equal(run('totals().magic'), 5);
   assert.equal(run('totals().melee'), -10);
@@ -320,13 +321,14 @@ test('ending shopping with staged items asks before discarding them', () => {
   assert.equal(run('state.gold'), 500);
 });
 
-test('new game starts with five of every item and customer selection; merchant arrives after five orders', () => {
+test('new game starts with five of each base item and only wannabes; merchant arrives after five orders', () => {
   const run = createGame();
   assert.equal(run('state.shopping'), false);
   assert.equal(run("$('shopDialog').open"), undefined);
   assert.equal(run('state.gold'), 500);
-  assert.equal(run('Object.keys(state.inventory).length'), run('ITEMS.length'));
-  assert.equal(run('ITEMS.every(item => state.inventory[item.id] === 5)'), true);
+  assert.equal(run('Object.keys(state.inventory).length'), run('ITEMS.filter(isUnlocked).length'));
+  assert.equal(run('ITEMS.every(item => state.inventory[item.id] === (item.level === 1 ? 5 : undefined))'), true);
+  assert.equal(run("state.queue.every(customer => customer.tier === 'wannabe')"), true);
   assert.match(run("$('merchantStatus').textContent"), /5 Aufträgen/);
   run("selectCustomer(state.queue[0].id); chooseBox('small'); packItem('pot1');");
   assert.equal(run('state.inventory.pot1'), 4);
@@ -340,5 +342,59 @@ test('new game starts with five of every item and customer selection; merchant a
     if (i < 5) run("state.queue = [generateCustomer()]; selectCustomer(state.queue[0].id); chooseBox('small');");
   }
   assert.equal(run("$('shopDialog').open"), true);
-  assert.equal(run('ITEMS.every(item => state.inventory[item.id] === 5)'), true);
+  assert.equal(run('ITEMS.every(item => state.inventory[item.id] === (item.level === 1 ? 5 : undefined))'), true);
+});
+
+test('level thresholds carry overflow and level-ups unlock items and boxes without granting free stock', () => {
+  const run = createGame();
+  for (const [exp, level, current, required] of [[0, 1, 0, 100], [99, 1, 99, 100], [100, 2, 0, 200], [299, 2, 199, 200], [300, 3, 0, 300], [605, 4, 5, 400]]) {
+    assert.deepEqual(JSON.parse(run(`JSON.stringify(progression(${exp}))`)), { level, current, required });
+  }
+  run(`state.exp = 95; selectCustomer(state.queue[0].id); chooseBox('small');
+    state.active.rarity = 'common'; state.active.needs = [{attr:'hp', target:10, prio:1}];
+    packItem('pot1'); send();`);
+  assert.equal(run('state.exp'), 115);
+  assert.equal(run('progression().level'), 2);
+  assert.equal(run('progression().current'), 15);
+  assert.equal(run("isUnlocked(ITEMS.find(item => item.id === 'sword'))"), true);
+  assert.equal(run('state.inventory.sword'), undefined);
+  assert.match(run("$('result').innerHTML"), /Levelaufstieg: 1 → 2/);
+  assert.match(run("$('result').innerHTML"), /Abenteurer/);
+});
+
+test('level gates hold for shop, checkout and boxes and roadmap reflects the same unlocks', () => {
+  const run = createGame();
+  run("state.shopping = true; addToCart('sword');");
+  assert.equal(run('state.cart.sword'), undefined);
+  run("state.cart.sword = 1; checkout();");
+  assert.equal(run('state.gold'), 500);
+  assert.equal(run('state.inventory.sword'), undefined);
+  assert.match(run("$('checkoutMessage').textContent"), /gesperrte Items/);
+  run("state.cart = {}; finishShopping(); selectCustomer(state.queue[0].id); chooseBox('medium');");
+  assert.equal(run('state.boxType'), null);
+  run("state.exp = expForLevel(3); chooseBox('medium');");
+  assert.equal(run('state.boxType.id'), 'medium');
+  assert.equal(run('queueCapacity()'), 4);
+  run("chooseBox('magic')");
+  assert.equal(run('state.boxType.id'), 'medium');
+  run("state.exp = expForLevel(4); chooseBox('magic'); renderRoadmap();");
+  assert.equal(run('state.boxType.id'), 'magic');
+  assert.match(run("$('roadmap').innerHTML"), /Level 4 · Freigeschaltet · Aktuell/);
+  assert.match(run("$('roadmap').innerHTML"), /Level 5 · Gesperrt/);
+  run('state.exp = expForLevel(6)');
+  assert.equal(run('queueCapacity()'), 5);
+});
+
+test('generated customers and reward items obey level gates and increased queue capacity fills naturally', () => {
+  const run = createGame();
+  for (let level = 1; level <= 7; level++) {
+    run(`state.exp = expForLevel(${level});`);
+    assert.equal(run(`Array.from({length: 100}, () => generateCustomer()).every(customer =>
+      CUSTOMER_TIERS.find(tier => tier.id === customer.tier).level <= progression().level &&
+      customer.itemRewards.every(reward => isUnlocked(reward.item)))`), true);
+  }
+  run('state.exp = 0; globalThis.beforeTime = state.queue[0].timeLeft; openRoadmap(); tick(1);');
+  assert.equal(run('state.queue[0].timeLeft'), run('beforeTime'));
+  run("$('closeRoadmap').onclick(); state.exp = expForLevel(3); tick(1);");
+  assert.equal(run('state.queue.length'), 4);
 });

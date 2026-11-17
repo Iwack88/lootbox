@@ -41,6 +41,20 @@ small { opacity: .7; font-weight: 400; }
 .merchant-dialog::backdrop { background: rgba(10, 9, 25, .88); }
 .merchant-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .merchant-heading h2 { margin: 0; font-size: 22px; }
+.level-status { display: flex; flex-direction: column; gap: 6px; font-size: 13px; max-width: 480px; }
+.level-status progress { width: 100%; accent-color: #6c63ff; }
+header { align-items: center; flex-wrap: wrap; gap: 10px; }
+.secondary { background: #34325c; color: #eee; border: 1px solid #6c63ff; border-radius: 9px; font: inherit; font-size: 14px; padding: 8px 12px; cursor: pointer; touch-action: manipulation; }
+#shopRoadmap { margin-bottom: 12px; }
+.milestone { padding: 12px; margin-bottom: 10px; border-left: 3px solid #8a88b0; background: #34325c; border-radius: 8px; }
+.milestone.unlocked { border-left-color: #4cc38a; }
+.milestone h3 { margin: 0 0 4px; font-size: 16px; }
+.milestone ul, .new-unlocks { padding-left: 20px; font-size: 13px; line-height: 1.6; }
+.level-up { color: #ffd166; font-weight: 700; }
+.new-unlocks { text-align: left; margin: 0; }
+.overlay { overflow-y: auto; }
+.overlay .new-unlocks { flex-shrink: 0; }
+.add-item:disabled { opacity: .5; font-size: 11px; }
 .merchant-content { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
 .merchant-content h3 { margin: 0 0 10px; font-size: 16px; }
 .shop-column, .cart-column { min-width: 0; }
