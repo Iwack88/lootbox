@@ -80,7 +80,7 @@ function generateCustomer() {
   return { id: nextId++, name: pick(NAMES), cls: base.cls, icon: base.icon, needs, rarity, timeLeft: def.time, maxTime: def.time };
 }
 
-const state = { gold: 100, exp: 0, boxType: null, box: [], active: null, queue: [], spawnT: 0 };
+const state = { gold: 100, exp: 0, inventory: {}, boxType: null, box: [], active: null, queue: [], spawnT: 0 };
 
 const capacity = () => state.boxType ? state.boxType.capacity : 0;
 
@@ -109,23 +109,32 @@ const rewardFor = (q, c) => {
   return { gold: Math.round((10 + q * 30) * m), exp: Math.round((5 + q * 15) * m) };
 };
 
-function refundBox() {
-  for (const it of state.box) state.gold += it.cost;
+function returnBoxToInventory() {
+  for (const it of state.box) {
+    state.inventory[it.id] = (state.inventory[it.id] || 0) + 1;
+  }
   state.box = [];
 }
 
 function buy(id) {
   const it = ITEMS.find(i => i.id === id);
-  if (!state.active || !state.boxType || state.gold < it.cost || usedWeight() + it.weight > capacity()) return;
+  if (!it || state.gold < it.cost) return;
   state.gold -= it.cost;
+  state.inventory[id] = (state.inventory[id] || 0) + 1;
+  render();
+}
+
+function packItem(id) {
+  const it = ITEMS.find(i => i.id === id);
+  if (!it || !state.active || !state.boxType || !state.inventory[id] || usedWeight() + it.weight > capacity()) return;
+  state.inventory[id]--;
   state.box.push(it);
   render();
 }
 
-// Entfernen erstattet den vollen Preis, damit Probieren nichts kostet.
 function removeFromBox(index) {
   const [it] = state.box.splice(index, 1);
-  state.gold += it.cost;
+  state.inventory[it.id] = (state.inventory[it.id] || 0) + 1;
   render();
 }
 
@@ -134,7 +143,7 @@ function selectCustomer(id) {
   const i = state.queue.findIndex(c => c.id === id);
   if (i < 0) return;
   const chosen = state.queue[i];
-  refundBox();
+  returnBoxToInventory();
   if (state.active) state.queue[i] = state.active;
   else state.queue.splice(i, 1);
   state.active = chosen;
@@ -142,6 +151,7 @@ function selectCustomer(id) {
   if (autoCollapse) {
     $('queueCard').open = false;
     for (const id of ['custCard', 'pickCard', 'boxCard']) $(id).open = true;
+    $('inventoryCard').open = false;
     $('shopCard').open = false;
   }
   render();
@@ -150,9 +160,10 @@ function selectCustomer(id) {
 function chooseBox(id) {
   const type = BOXES.find(b => b.id === id);
   if (!state.active || !type || state.exp < type.exp) return;
-  refundBox();
+  if (state.boxType === type) return;
+  returnBoxToInventory();
   state.boxType = type;
-  $('shopCard').open = true;
+  $('inventoryCard').open = true;
   render();
 }
 
@@ -243,7 +254,7 @@ function render() {
   const used = usedWeight();
   $('box').innerHTML = state.box.length
     ? state.box.map((it, i) => `<button class="box-item" data-i="${i}"><span class="ico">${it.icon}</span><span class="txt">${it.name}</span><span class="kg">${it.weight} kg ✕</span></button>`).join('')
-    : `<div class="empty">${state.boxType ? 'Leer – kaufe Items im Shop' : 'Wähle zuerst eine Box'}</div>`;
+    : `<div class="empty">${state.boxType ? 'Leer – packe Items aus deinem Inventar ein' : 'Wähle zuerst eine Box'}</div>`;
   $('box').querySelectorAll('.box-item').forEach(el => el.onclick = () => removeFromBox(+el.dataset.i));
   $('slotInfo').textContent = state.boxType ? `${used}/${capacity()} kg` : '';
   $('weightBar').style.width = capacity() ? `${used / capacity() * 100}%` : '0%';
@@ -262,16 +273,34 @@ function render() {
   $('send').disabled = !c || !state.boxType;
 
   $('shop').innerHTML = ITEMS.map(it => {
-    const off = !c || !state.boxType || state.gold < it.cost || used + it.weight > capacity();
+    const off = state.gold < it.cost;
     return `<button class="shop-item" data-id="${it.id}" ${off ? 'disabled' : ''}>
       <span class="ico">${it.icon}</span>
-      <span class="txt">${it.name}<small>${ATTRS[it.attr].icon} +${it.value} · ${it.weight} kg</small></span>
+      <span class="txt">${it.name}<small>${ATTRS[it.attr].icon} +${it.value} · ${it.weight} kg · Lager: ${state.inventory[it.id] || 0}</small></span>
       <span class="cost">💰 ${it.cost}</span>
     </button>`;
   }).join('');
   $('shop').querySelectorAll('.shop-item').forEach(el => el.onclick = () => buy(el.dataset.id));
+  renderInventory();
   renderPicker();
   renderQueue();
+}
+
+function renderInventory() {
+  const count = Object.values(state.inventory).reduce((sum, quantity) => sum + quantity, 0);
+  $('inventoryInfo').textContent = `${count} Items`;
+  const owned = ITEMS.filter(it => state.inventory[it.id] > 0);
+  $('inventory').innerHTML = owned.length
+    ? owned.map(it => {
+        const off = !state.active || !state.boxType || usedWeight() + it.weight > capacity();
+        return `<button class="shop-item" data-id="${it.id}" ${off ? 'disabled' : ''}>
+          <span class="ico">${it.icon}</span>
+          <span class="txt">${it.name}<small>${ATTRS[it.attr].icon} +${it.value} · ${it.weight} kg · In Box legen</small></span>
+          <span class="cost">×${state.inventory[it.id]}</span>
+        </button>`;
+      }).join('')
+    : '<div class="empty">Dein Lager ist leer. Kaufe Vorräte im Shop.</div>';
+  $('inventory').querySelectorAll('.shop-item').forEach(el => el.onclick = () => packItem(el.dataset.id));
 }
 
 function renderPicker() {

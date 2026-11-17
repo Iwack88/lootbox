@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1b1a2e">
 <meta http-equiv="Cache-Control" content="no-cache">
 <title>Lootbox Packer</title>
-<link rel="stylesheet" href="style.css?v=4">
+<link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
 <header>
@@ -36,14 +36,21 @@
   <div id="preview" class="preview"></div>
 </details>
 
+<details class="card" id="inventoryCard" open>
+  <summary>Inventar <small id="inventoryInfo"></small></summary>
+  <p class="hint">Tippe auf ein Item, um es einzupacken. Entfernte Items gehen zurück ins Lager.</p>
+  <div id="inventory" class="shop"></div>
+</details>
+
 <details class="card" id="shopCard" open>
   <summary>Shop</summary>
+  <p class="hint">Jeder Kauf legt ein Item in dein Inventar, nicht direkt in die Box.</p>
   <div id="shop" class="shop"></div>
 </details>
 
 <button id="send" class="primary fab">📦 Absenden</button>
 
 <div id="result" class="overlay hidden"></div>
-<script src="game.js?v=4"></script>
+<script src="game.js?v=5"></script>
 </body>
 </html>
