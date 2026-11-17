@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1b1a2e">
 <meta http-equiv="Cache-Control" content="no-cache">
 <title>Lootbox Packer</title>
-<link rel="stylesheet" href="style.css?v=28">
+<link rel="stylesheet" href="style.css?v=29">
 </head>
 <body>
 <header>
@@ -77,35 +77,47 @@
     <button id="backToBoxes" class="secondary">← Box wählen</button>
     <h2 id="packingTitle" tabindex="-1">Box packen</h2>
   </div>
-  <p class="hint">Zurück zur Box-Auswahl legt die eingepackten Items ins Inventar zurück.</p>
   <div class="packing-layout">
-<details class="card" id="custCard" open>
-  <summary>Aktiver Kunde</summary>
+<section class="card" id="custCard">
   <div id="customer"></div>
-</details>
+</section>
 
-<details class="card" id="boxCard" open>
-  <summary>Box <small id="pickInfo"></small> <small id="slotInfo"></small></summary>
-  <div class="bar capacity-bar"><div id="capacityBar"></div></div>
+<section class="card" id="boxCard">
+  <h3>Box <small id="pickInfo"></small> <small id="slotInfo"></small></h3>
   <div id="boxEffects" class="box-effects"></div>
   <div id="box" class="box"></div>
   <div id="preview" class="preview"></div>
-</details>
-
-<details class="card" id="inventoryCard" open>
-  <summary>Inventar <small id="inventoryInfo"></small></summary>
-  <button id="packingSupply" class="secondary">Vorrat ansehen &amp; nachbestellen</button>
-  <p class="hint">Tippe auf ein Item, um es einzupacken. Jedes Item belegt einen Slot. Kleine Items sparen Gold, starke Items sparen Platz. Grüne Items verbinden zwei Attribute. Needs dürfen übererfüllt werden – exakt zu packen spart nur Ressourcen. Entfernte Items gehen zurück ins Lager.</p>
-  <div id="inventory" class="shop"></div>
-  <div class="restock-panel">
-    <button id="restock" class="primary">Notfall-Restock</button>
-    <p id="restockHint" class="hint"></p>
-    <div id="restockResult" role="status"></div>
-  </div>
-</details>
+</section>
   </div>
   <div class="order-actions"><button id="send" class="primary">📦 Absenden</button></div>
 </section>
+</dialog>
+
+<dialog id="packingInventoryDialog" class="merchant-dialog item-dialog" aria-labelledby="packingInventoryTitle">
+  <div class="merchant-heading">
+    <h2 id="packingInventoryTitle">Slot befüllen</h2>
+    <button id="closePackingInventory" class="secondary">Zurück</button>
+  </div>
+  <p id="packingSaveStatus" class="hint" role="status" hidden></p>
+  <p class="hint">Wähle ein Item für Details und packe es anschließend ein.</p>
+  <div id="inventory" class="icon-grid"></div>
+  <div id="packingItemDetails" class="item-details" aria-live="polite"></div>
+  <button id="packingSupply" class="secondary">Vorrat ansehen &amp; nachbestellen</button>
+  <div class="restock-panel">
+    <button id="restock" class="secondary">Notfall-Restock</button>
+    <p id="restockHint" class="hint"></p>
+    <div id="restockResult" role="status"></div>
+  </div>
+</dialog>
+
+<dialog id="packedItemDialog" class="merchant-dialog item-dialog" aria-labelledby="packedItemTitle">
+  <div class="merchant-heading">
+    <h2 id="packedItemTitle">Item in der Box</h2>
+    <button id="closePackedItem" class="secondary">Zurück</button>
+  </div>
+  <p id="packedItemSaveStatus" class="hint" role="status" hidden></p>
+  <div id="packedItemDetails" class="item-details"></div>
+  <button id="removePackedItem" class="secondary danger">Aus Box entfernen</button>
 </dialog>
 
 <!-- Händler vorerst deaktiviert; Oberfläche für eine spätere Rückkehr erhalten. -->
@@ -155,7 +167,8 @@
   <h3>Items &amp; Vorrat</h3>
   <label class="availability-filter"><input id="hideUnavailable" type="checkbox" checked> Nicht verfügbare Items ausblenden</label>
   <p class="hint">Zeigt nur bestellbare Items oder Items mit Vorrat.</p>
-  <div id="supplyInventory" class="shop"></div>
+  <div id="supplyInventory" class="icon-grid"></div>
+  <div id="supplyItemDetails" class="item-details" aria-live="polite"></div>
 </dialog>
 
 <dialog id="workshopDialog" class="merchant-dialog" aria-labelledby="workshopTitle">
@@ -217,7 +230,7 @@
 </dialog>
 
 <div id="result" class="overlay hidden"></div>
-<script src="sound.js?v=28"></script>
-<script src="game.js?v=28"></script>
+<script src="sound.js?v=29"></script>
+<script src="game.js?v=29"></script>
 </body>
 </html>

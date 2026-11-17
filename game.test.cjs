@@ -33,6 +33,7 @@ function createGame(options = {}) {
             style: {},
             listeners: {},
             querySelectorAll: () => [],
+            querySelector: () => null,
             addEventListener(type, listener) { this.listeners[type] = listener; },
             setAttribute(name, value) { this[name] = value; },
             showModal() { this.open = true; },
@@ -120,6 +121,78 @@ function createOrderingGame(options = {}) {
 function createMilestoneGame(options = {}) {
   return createOrderingGame({ ...options, legacyStreak: false });
 }
+
+test('individual slots select icons for details, retain their positions after reload and return removed items', () => {
+  const storage = new Map();
+  const run = createMilestoneGame({ storage });
+  run(`selectCustomer(state.queue[0].id); chooseBox('small');
+    state.active.needs = [{attr:'hp', target:20, prio:2}]; render();`);
+  assert.equal((run("$('box').innerHTML").match(/data-slot=/g) || []).length, 3);
+  run('openBoxSlot(2)');
+  assert.equal(run("$('packingInventoryDialog').open"), true);
+  assert.match(run("$('inventory').innerHTML"), /data-pack-item="pot1"/);
+  assert.match(run("$('inventory').innerHTML"), /Kleiner Heiltrank, Vorrat: 5/);
+  run("selectedPackingItem = 'pot1'; renderInventory()");
+  assert.match(run("$('packingItemDetails').innerHTML"), /Leben: \+10/);
+  assert.match(run("$('packingItemDetails').innerHTML"), /Einpacken/);
+  run("$('confirmPackItem').onclick()");
+  assert.equal(run("$('packingInventoryDialog').open"), false);
+  assert.equal(run('state.inventory.pot1'), 4);
+  assert.deepEqual(JSON.parse(run('JSON.stringify(state.boxPositions)')), [2]);
+  assert.match(run("$('box').innerHTML"), /Slot 3: Kleiner Heiltrank/);
+  assert.match(run("$('customer').innerHTML"), /10\/20/);
+  assert.match(run("$('preview').innerHTML"), /Aktuell: 50%/);
+  run("packItem('dag', 0); packItem('dag', 0); packItem('dag', 3)");
+  assert.equal(run('state.box.length'), 2);
+  const restored = createMilestoneGame({ storage });
+  assert.deepEqual(JSON.parse(restored('JSON.stringify(state.boxPositions)')), [2,0]);
+  restored('openBoxSlot(2)');
+  assert.match(restored("$('packedItemDetails').innerHTML"), /Kleiner Heiltrank/);
+  restored("$('removePackedItem').onclick()");
+  assert.equal(restored('state.inventory.pot1'), 5);
+  assert.deepEqual(JSON.parse(restored('JSON.stringify(state.boxPositions)')), [0]);
+  assert.match(restored("$('box').innerHTML"), /Slot 3: leer/);
+  restored('backToBoxes()');
+  assert.equal(restored('state.inventory.dag'), 5);
+  assert.equal(restored('state.boxPositions.length'), 0);
+});
+
+test('old saves restore packed items in sequential slots and invalid slot positions cannot overwrite a save', () => {
+  const storage = new Map();
+  const run = createMilestoneGame({ storage });
+  run("selectCustomer(state.queue[0].id); chooseBox('small'); packItem('pot1'); packItem('dag');");
+  const key = run('SAVE_KEY');
+  const old = JSON.parse(storage.get(key));
+  delete old.state.boxPositions;
+  storage.set(key, JSON.stringify(old));
+  const restored = createMilestoneGame({ storage });
+  assert.deepEqual(JSON.parse(restored('JSON.stringify(state.boxPositions)')), [0,1]);
+  for (const positions of [[1,1], [0,3], [0], [0,'1'], null]) {
+    const invalid = JSON.parse(JSON.stringify(old));
+    invalid.state.boxPositions = positions;
+    const raw = JSON.stringify(invalid);
+    storage.set(key, raw);
+    const rejected = createMilestoneGame({ storage, console: { error() {} } });
+    assert.equal(rejected('savingBlocked'), true);
+    assert.equal(storage.get(key), raw);
+  }
+});
+
+test('inventory icon selection shows order details and preserves filter, stock and order controls', () => {
+  const run = createMilestoneGame();
+  run("openSupply(); selectedSupplyItem = 'bandage'; renderSupply()");
+  assert.match(run("$('supplyInventory').innerHTML"), /data-supply-item="bandage"/);
+  assert.match(run("$('supplyItemDetails').innerHTML"), /Verband/);
+  assert.match(run("$('supplyItemDetails').innerHTML"), /Leben: \+6/);
+  assert.match(run("$('supplyItemDetails').innerHTML"), /Bestellen · 3 Gold/);
+  run("placeOrder('bandage', 1)");
+  assert.match(run("$('supplyItemDetails').innerHTML"), /Verband/);
+  assert.equal(run('state.orders.length'), 1);
+  run("state.inventory.runeblade = 1; selectedSupplyItem = 'runeblade'; renderSupply()");
+  assert.match(run("$('supplyItemDetails').innerHTML"), /Nicht bestellbar/);
+  run("state.inventory.runeblade = 0; renderSupply()");
+  assert.equal(run('selectedSupplyItem'), null);
+});
 
 test('options open and close without changing progress, and normal save messages stay inside options', () => {
   const run = createMilestoneGame();
@@ -379,8 +452,8 @@ test('availability filter defaults on, keeps orderable or stocked items and can 
 test('quantity buttons clamp to level limits and update the order price and affordability', () => {
   const run = createOrderingGame();
   run(`globalThis.quantityElements = {};
-    $('supplyInventory').querySelector = selector => quantityElements[selector] ||= {};
-    openSupply(); state.gold = 6; adjustOrderQuantity('bandage', 1);`);
+    $('supplyItemDetails').querySelector = selector => quantityElements[selector] ||= {};
+    openSupply(); selectedSupplyItem = 'bandage'; renderSupply(); state.gold = 6; adjustOrderQuantity('bandage', 1);`);
   assert.equal(run('orderDrafts.bandage'), 2);
   assert.equal(run(`quantityElements['[data-quantity="bandage"]'].textContent`), 2);
   assert.equal(run(`quantityElements['[data-item="bandage"]'].textContent`), 'Bestellen · 6 Gold');
@@ -397,9 +470,9 @@ test('quantity buttons clamp to level limits and update the order price and affo
   assert.equal(run(`quantityElements['[data-decrease="bandage"]'].disabled`), true);
   assert.equal(run(`quantityElements['[data-increase="bandage"]'].disabled`), false);
   run("renderSupply()");
-  assert.doesNotMatch(run("$('supplyInventory').innerHTML"), /<input/);
-  assert.match(run("$('supplyInventory').innerHTML"), /data-decrease="bandage"/);
-  assert.match(run("$('supplyInventory').innerHTML"), /data-increase="bandage"/);
+  assert.doesNotMatch(run("$('supplyItemDetails').innerHTML"), /<input/);
+  assert.match(run("$('supplyItemDetails').innerHTML"), /data-decrease="bandage"/);
+  assert.match(run("$('supplyItemDetails').innerHTML"), /data-increase="bandage"/);
   run("state.gold = 500; adjustOrderQuantity('bandage', 1); placeOrder('bandage', orderDrafts.bandage)");
   assert.equal(run('state.orders[0].quantity'), 2);
   assert.equal(run('state.gold'), 494);
@@ -1685,12 +1758,13 @@ test('rare items unlock in the shop, transfer at checkout, and fulfill two needs
     assert.equal(run('state.inventory[item.id]'), 0);
     assert.equal(run('quality()'), 1);
     assert.equal(run('state.active.needs.length'), 2);
-    assert.match(run("$('box').innerHTML"), /box-item item-rarity-rare/);
-    assert.match(run("$('box').innerHTML"), /1 Slot/);
+    assert.match(run("$('box').innerHTML"), /box-item icon-slot item-rarity-rare/);
+    run('openBoxSlot(0)');
+    assert.match(run("$('packedItemDetails').innerHTML"), /1 Slot/);
     const attributes = JSON.parse(run('JSON.stringify(Object.entries(item.stats))'));
     for (const [attr, value] of attributes) {
       assert.equal(run(`totals()['${attr}']`), value);
-      assert.ok(run("$('box').innerHTML").includes(run(`statsText({${attr}:${value}})`)));
+      assert.ok(run("$('packedItemDetails').innerHTML").includes(run(`statsText({${attr}:${value}})`)));
       assert.match(run("$('customer').innerHTML"), new RegExp(`${value}/${value}`));
     }
     run('removeFromBox(0)');
@@ -1729,7 +1803,7 @@ test('roadmap and streak packages include unlocked rare items while starter stoc
     changeStreak(19); state.inventory = {}; changeStreak(1); render(); renderRoadmap();`);
   assert.equal(run('Object.values(state.inventory).reduce((a,b) => a+b,0)'), 3);
   assert.equal(run("Object.keys(state.inventory).every(id => ITEMS.find(item => item.id === id).rarity === 'rare' && isUnlocked(ITEMS.find(item => item.id === id)))"), true);
-  assert.match(run("$('inventory').innerHTML"), /shop-item item-rarity-rare/);
+  assert.match(run("$('inventory').innerHTML"), /icon-slot item-rarity-rare/);
   assert.match(run("$('roadmap').innerHTML"), /Schild der Rechtschaffenheit/);
   assert.match(run("$('roadmap').innerHTML"), /Selten · 🛡️ Rüstung: \+20 · 🔮 Magie: \+10/);
   run('state.inventory = {}; emergencyRestock();');

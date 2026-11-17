@@ -325,7 +325,7 @@ const state = {
   shopping: false, shopOffers: [], completed: 0, debt: 0, showingResult: false,
   streak: 0, claimedCheckpoints: [], pendingDiscounts: [], activeDiscount: null,
   materials: { wood: 0, iron: 0, cloth: 0 }, crafts: [],
-  orders: [],
+  orders: [], boxPositions: [],
   claimedLevelRewards: [], levelDiscounts: [],
 };
 
@@ -336,7 +336,7 @@ let savingBlocked = false;
 let storageError = '';
 
 function showSaveStatus(message, error = false) {
-  for (const id of ['saveStatus', 'saveAlert', 'orderSaveStatus', 'shopSaveStatus', 'workshopSaveStatus', 'supplySaveStatus']) {
+  for (const id of ['saveStatus', 'saveAlert', 'orderSaveStatus', 'packingSaveStatus', 'packedItemSaveStatus', 'shopSaveStatus', 'workshopSaveStatus', 'supplySaveStatus']) {
     if ($(id).textContent !== message) $(id).textContent = message;
     $(id).classList.toggle('error', error);
     $(id).hidden = id !== 'saveStatus' && !error;
@@ -452,6 +452,10 @@ function decodeSave(data) {
   require(boxType !== undefined && (!boxType || active));
   const box = saved.box.map(itemFor);
   require(box.length <= (boxType?.slots || 0));
+  const boxPositions = saved.boxPositions === undefined ? box.map((_, index) => index) : saved.boxPositions;
+  require(Array.isArray(boxPositions) && boxPositions.length === box.length
+    && new Set(boxPositions).size === boxPositions.length
+    && boxPositions.every(position => count(position) && position < (boxType?.slots || 0)));
   const inventory = itemCounts(saved.inventory);
   const cart = itemCounts(saved.cart);
   const shopOffers = saved.shopOffers.map(id => itemFor(id).id);
@@ -488,7 +492,7 @@ function decodeSave(data) {
     && claimedLevelRewards.every(value => value <= level && LEVEL_REWARDS.some(reward => reward.level === value)));
   require(Array.isArray(levelDiscounts) && levelDiscounts.every(value => [10, 15, 20].includes(value)));
   return { gold: saved.gold, exp: totalExp, debt: saved.debt, streak: saved.streak, completed: saved.completed,
-    spawnT: saved.spawnT, shopping: saved.shopping, showingResult: false, inventory, cart, boxType, box, active, queue,
+    spawnT: saved.spawnT, shopping: saved.shopping, showingResult: false, inventory, cart, boxType, box, boxPositions: [...boxPositions], active, queue,
     shopOffers, claimedCheckpoints, pendingDiscounts, activeDiscount, materials: { ...materials }, crafts: crafts.map(craft => ({ ...craft })),
     orders: orders.map(order => ({ item: order.item, quantity: order.quantity, finishAt: order.finishAt })),
     claimedLevelRewards: [...claimedLevelRewards], levelDiscounts: [...levelDiscounts] };
@@ -689,6 +693,7 @@ function returnBoxToInventory() {
     state.inventory[it.id] = (state.inventory[it.id] || 0) + 1;
   }
   state.box = [];
+  state.boxPositions = [];
 }
 
 const cartQuantity = () => Object.values(state.cart).reduce((sum, quantity) => sum + quantity, 0);
@@ -765,22 +770,27 @@ function emergencyRestock() {
   state.debt += RESTOCK_COST - paid;
   for (const id of ids) state.inventory[id] = (state.inventory[id] || 0) + 1;
   $('restockResult').textContent = 'Erhalten: ' + ids.map(id => ITEMS.find(it => it.id === id).name).join(', ');
-  $('inventoryCard').open = true;
   sfx.play('checkout');
   render();
 }
 
-function packItem(id) {
+function packItem(id, position = null) {
   const it = ITEMS.find(i => i.id === id);
   if (!it || !isUnlocked(it) || !state.active || !state.boxType || !state.inventory[id] || usedSlots() >= capacity()) return;
+  if (position === null) position = Array.from({ length: capacity() }, (_, i) => i).find(i => !state.boxPositions.includes(i));
+  if (!Number.isInteger(position) || position < 0 || position >= capacity() || state.boxPositions.includes(position)) return;
   state.inventory[id]--;
   state.box.push(it);
+  state.boxPositions.push(position);
   sfx.play('pack');
   render();
+  return true;
 }
 
 function removeFromBox(index) {
+  if (!Number.isInteger(index) || index < 0 || index >= state.box.length) return;
   const [it] = state.box.splice(index, 1);
+  state.boxPositions.splice(index, 1);
   state.inventory[it.id] = (state.inventory[it.id] || 0) + 1;
   sfx.play('remove');
   render();
@@ -807,7 +817,6 @@ function chooseBox(id) {
   if (state.boxType === type) return;
   returnBoxToInventory();
   state.boxType = type;
-  $('inventoryCard').open = true;
   sfx.play('box');
   render();
   $('orderDialog').scrollTop = 0;
@@ -857,6 +866,7 @@ function send() {
   const bonuses = STREAK_ENABLED ? changeStreak(r.points) : grantLevelRewards(previousLevel, newLevel);
   sfx.play(bonuses.length ? 'checkpoint' : newLevel > previousLevel ? 'level' : 'send');
   state.box = [];
+  state.boxPositions = [];
   state.boxType = null;
   state.active = null;
   if (MERCHANT_ENABLED) state.completed++;
@@ -1006,25 +1016,28 @@ function render() {
     : '';
 
   const used = usedSlots();
-  $('box').innerHTML = state.box.length
-    ? state.box.map((it, i) => `<button class="box-item item-rarity-${it.rarity}" data-i="${i}"><span class="ico">${it.icon}</span><span class="txt">${itemNameHtml(it)}<small>${itemDetailsHtml(it)}</small></span><span class="remove">✕</span></button>`).join('')
-    : `<div class="empty">${state.boxType ? 'Leer – packe Items aus deinem Inventar ein' : 'Wähle zuerst eine Box'}</div>`;
-  $('box').querySelectorAll('.box-item').forEach(el => el.onclick = () => removeFromBox(+el.dataset.i));
+  $('box').innerHTML = Array.from({ length: capacity() }, (_, position) => {
+    const index = state.boxPositions.indexOf(position);
+    const item = state.box[index];
+    return item
+      ? `<button class="box-item icon-slot item-rarity-${item.rarity}" data-slot="${position}" aria-label="Slot ${position + 1}: ${item.name}, Details anzeigen" title="${item.name}"><span aria-hidden="true">${item.icon}</span></button>`
+      : `<button class="icon-slot empty-slot" data-slot="${position}" aria-label="Slot ${position + 1}: leer, Item auswählen"><span aria-hidden="true">＋</span></button>`;
+  }).join('');
+  $('box').querySelectorAll('[data-slot]').forEach(el => el.onclick = () => openBoxSlot(+el.dataset.slot));
   $('slotInfo').textContent = state.boxType ? `${used}/${capacity()} Items` : '';
   $('boxEffects').textContent = state.boxType ? `Kisteneffekt: ${boxEffectsText(state.boxType)}` : '';
-  $('capacityBar').style.width = capacity() ? `${used / capacity() * 100}%` : '0%';
-  $('capacityBar').classList.toggle('full', capacity() > 0 && used >= capacity());
 
   if (c) {
     const q = quality(), r = rewardFor(q, c);
     const itemCost = state.box.reduce((sum, item) => sum + shopPrice(item), 0);
     const repayment = Math.min(state.debt, r.gold);
     const netGold = r.gold - itemCost - repayment;
-    $('preview').innerHTML = `Aktuell: ${qualityPercent(q)}% → 💰 ${r.gold}  ⭐ ${r.exp}<br>
+    $('preview').innerHTML = `<div>Aktuell: ${qualityPercent(q)}% → 💰 ${r.gold}  ⭐ ${r.exp} ${itemRewardHtml(c, r.earned)}</div>
+      <details class="preview-details"><summary>Wert &amp; Vorschuss</summary>
       <span class="item-cost">Shopwert: ${itemCost} 💰 (ohne Rabatt; Belohnungsitems sind gratis)</span>
       <span class="net-gold${netGold < 0 ? ' loss' : ''}"> · Gegenwert-Differenz: ${netGold >= 0 ? '+' : ''}${netGold} 💰</span>
-      ${repayment ? `<br>Davon Vorschuss-Rückzahlung: ${repayment} Gold (in der Differenz berücksichtigt)` : ''}<br>
-      ${itemRewardHtml(c, r.earned)}${STREAK_ENABLED ? `<div class="streak-preview">+${CUSTOMER_TIERS.find(tier => tier.id === c.tier).points} Serienpunkte bei Reward</div>` : ''}`;
+      ${repayment ? `<br>Davon Vorschuss-Rückzahlung: ${repayment} Gold (in der Differenz berücksichtigt)` : ''}</details>
+      ${STREAK_ENABLED ? `<div class="streak-preview">+${CUSTOMER_TIERS.find(tier => tier.id === c.tier).points} Serienpunkte bei Reward</div>` : ''}`;
   } else {
     $('preview').textContent = '';
   }
@@ -1069,21 +1082,53 @@ function render() {
   saveGame();
 }
 
+let selectedSlot = null;
+let selectedPackingItem = null;
+let selectedSupplyItem = null;
+
+function itemIconButton(item, quantity, attribute, selected = false) {
+  return `<button class="icon-slot item-rarity-${item.rarity}${selected ? ' selected' : ''}" ${attribute}="${item.id}" aria-label="${item.name}, Vorrat: ${quantity}" aria-pressed="${selected}" title="${item.name}">
+    <span aria-hidden="true">${item.icon}</span><b class="item-count">${quantity}</b></button>`;
+}
+
+function itemInfoHtml(item) {
+  return `<div class="item-rarity-${item.rarity}"><strong>${item.icon} ${itemNameHtml(item)}</strong><p>${itemDetailsHtml(item)}</p><p>Vorrat: ${state.inventory[item.id] || 0}</p></div>`;
+}
+
+function openBoxSlot(position) {
+  if (!state.active || !state.boxType || !Number.isInteger(position) || position < 0 || position >= capacity()) return;
+  selectedSlot = position;
+  const index = state.boxPositions.indexOf(position);
+  if (index >= 0) {
+    $('packedItemDetails').innerHTML = itemInfoHtml(state.box[index]);
+    $('packedItemDialog').showModal();
+  } else {
+    selectedPackingItem = null;
+    renderInventory();
+    $('packingInventoryDialog').showModal();
+  }
+}
+
 function renderInventory() {
-  const count = Object.values(state.inventory).reduce((sum, quantity) => sum + quantity, 0);
-  $('inventoryInfo').textContent = `${count} Items`;
   const owned = ITEMS.filter(it => state.inventory[it.id] > 0);
   $('inventory').innerHTML = owned.length
-    ? owned.map(it => {
-        const off = !isUnlocked(it) || !state.active || !state.boxType || usedSlots() >= capacity();
-        return `<button class="shop-item item-rarity-${it.rarity}" data-id="${it.id}" ${off ? 'disabled' : ''}>
-          <span class="ico">${it.icon}</span>
-          <span class="txt">${itemNameHtml(it)}<small>${itemDetailsHtml(it)} · In Box legen</small></span>
-          <span class="cost">×${state.inventory[it.id]}</span>
-        </button>`;
-      }).join('')
+    ? owned.map(it => itemIconButton(it, state.inventory[it.id], 'data-pack-item', selectedPackingItem === it.id)).join('')
     : `<div class="empty">${state.shopping ? 'Dein Lager ist leer. Kaufe Vorräte im Shop.' : 'Dein Lager ist leer. Bestelle Nachschub im Inventar-Menü oder nutze den Notfall-Restock.'}</div>`;
-  $('inventory').querySelectorAll('.shop-item').forEach(el => el.onclick = () => packItem(el.dataset.id));
+  $('inventory').querySelectorAll('[data-pack-item]').forEach(el => el.onclick = () => {
+    selectedPackingItem = el.dataset.packItem;
+    renderInventory();
+    $('inventory').querySelector(`[data-pack-item="${selectedPackingItem}"]`)?.focus();
+  });
+  const item = owned.find(it => it.id === selectedPackingItem);
+  $('packingItemDetails').innerHTML = item ? `${itemInfoHtml(item)}
+    ${isUnlocked(item) ? '<button id="confirmPackItem" class="primary">Einpacken</button>' : `<p>Ab Level ${item.level} verwendbar.</p>`}`
+    : '<p class="hint">Tippe auf ein Item, um seine Werte zu sehen.</p>';
+  if (item && isUnlocked(item)) $('confirmPackItem').onclick = () => {
+    if (packItem(item.id, selectedSlot)) {
+      $('packingInventoryDialog').close();
+      $('box').querySelector(`[data-slot="${selectedSlot}"]`)?.focus();
+    }
+  };
 }
 
 function renderPicker() {
@@ -1211,7 +1256,7 @@ function adjustOrderQuantity(id, delta) {
   if (!item || !canOrder(item) || ![-1, 1].includes(delta)) return;
   const quantity = Math.min(orderQuantityLimit(), Math.max(1, (orderDrafts[id] ?? 1) + delta));
   orderDrafts[id] = quantity;
-  const controls = $('supplyInventory');
+  const controls = $('supplyItemDetails');
   controls.querySelector(`[data-quantity="${id}"]`).textContent = quantity;
   controls.querySelector(`[data-decrease="${id}"]`).disabled = quantity === 1;
   controls.querySelector(`[data-increase="${id}"]`).disabled = quantity === orderQuantityLimit();
@@ -1229,14 +1274,24 @@ function renderSupply() {
     ? `${discount} % Rabatt auf deine nächste Bestellung (gesamte Menge). Weitere Rabatte folgen einzeln.`
     : 'Kein Bestellrabatt vorgemerkt.';
   const visibleItems = ITEMS.filter(item => !$('hideUnavailable').checked || canOrder(item) || state.inventory[item.id] > 0);
-  $('supplyInventory').innerHTML = visibleItems.map(item => {
+  if (!visibleItems.some(item => item.id === selectedSupplyItem)) selectedSupplyItem = null;
+  $('supplyInventory').innerHTML = visibleItems.map(item =>
+    itemIconButton(item, state.inventory[item.id] || 0, 'data-supply-item', selectedSupplyItem === item.id)
+  ).join('') || '<p class="hint">Keine Items verfügbar.</p>';
+  $('supplyInventory').querySelectorAll('[data-supply-item]').forEach(button => button.onclick = () => {
+    selectedSupplyItem = button.dataset.supplyItem;
+    renderSupply();
+    $('supplyInventory').querySelector(`[data-supply-item="${selectedSupplyItem}"]`)?.focus();
+  });
+  const item = visibleItems.find(entry => entry.id === selectedSupplyItem);
+  $('supplyItemDetails').innerHTML = item ? (() => {
     const catalog = ORDER_CATALOG.find(entry => entry.item === item.id);
     const available = canOrder(item);
     const quantity = orderDrafts[item.id] ?? 1;
     const price = orderPrice(item, quantity);
     return `<div class="supply-row item-rarity-${item.rarity}">
-      <div class="supply-item"><span>${item.icon} ${itemNameHtml(item)}</span><b>Vorrat: ${state.inventory[item.id] || 0}</b></div>
-      <small>${itemDetailsHtml(item)}${isUnlocked(item) ? '' : ` · Item ab Level ${item.level}`}</small>
+      ${itemInfoHtml(item)}
+      <small>${isUnlocked(item) ? '' : `Item ab Level ${item.level}`}</small>
       ${available ? `<div class="supply-controls">
         <div class="quantity-controls" role="group" aria-label="Bestellmenge ${item.name}">
           <button class="secondary" data-decrease="${item.id}" aria-label="${item.name}: Menge verringern" ${quantity === 1 ? 'disabled' : ''}>−</button>
@@ -1246,14 +1301,14 @@ function renderSupply() {
         <button class="secondary order-item" data-item="${item.id}" ${state.orders.length >= orderCapacity() || price > state.gold ? 'disabled' : ''}>Bestellen · ${price} Gold</button></div>`
       : `<small>${catalog ? `Bestellbar ab Level ${catalog.level}` : 'Nicht bestellbar · Kundenbelohnungen oder Werkstatt'}</small>`}
     </div>`;
-  }).join('');
-  $('supplyInventory').querySelectorAll('[data-decrease]').forEach(button => {
+  })() : '<p class="hint">Tippe auf ein Item, um Details und Bestellmöglichkeiten zu sehen.</p>';
+  $('supplyItemDetails').querySelectorAll('[data-decrease]').forEach(button => {
     button.onclick = () => adjustOrderQuantity(button.dataset.decrease, -1);
   });
-  $('supplyInventory').querySelectorAll('[data-increase]').forEach(button => {
+  $('supplyItemDetails').querySelectorAll('[data-increase]').forEach(button => {
     button.onclick = () => adjustOrderQuantity(button.dataset.increase, 1);
   });
-  $('supplyInventory').querySelectorAll('.order-item').forEach(button => {
+  $('supplyItemDetails').querySelectorAll('.order-item').forEach(button => {
     button.onclick = () => placeOrder(button.dataset.item, orderDrafts[button.dataset.item] ?? 1);
   });
 }
@@ -1270,6 +1325,21 @@ $('send').onclick = send;
 $('openSupply').onclick = openSupply;
 $('packingSupply').onclick = openSupply;
 $('closeSupply').onclick = () => $('supplyDialog').close();
+$('supplyDialog').addEventListener('close', () => {
+  if ($('packingInventoryDialog').open) renderInventory();
+});
+$('closePackingInventory').onclick = () => $('packingInventoryDialog').close();
+$('closePackedItem').onclick = () => $('packedItemDialog').close();
+for (const id of ['packingInventoryDialog', 'packedItemDialog']) {
+  $(id).addEventListener('close', () => $('box').querySelector(`[data-slot="${selectedSlot}"]`)?.focus());
+}
+$('removePackedItem').onclick = () => {
+  const index = state.boxPositions.indexOf(selectedSlot);
+  if (index < 0) return;
+  removeFromBox(index);
+  $('packedItemDialog').close();
+  $('box').querySelector(`[data-slot="${selectedSlot}"]`)?.focus();
+};
 $('hideUnavailable').checked = true;
 $('hideUnavailable').onchange = renderSupply;
 $('openWorkshop').onclick = openWorkshop;
