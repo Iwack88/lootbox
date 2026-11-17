@@ -133,8 +133,8 @@ function generateCustomer() {
 }
 
 const state = {
-  gold: 500, exp: 0, inventory: {}, cart: {}, boxType: null, box: [], active: null, queue: [], spawnT: 0,
-  shopping: true, completed: 0, debt: 0, showingResult: false,
+  gold: 500, exp: 0, inventory: Object.fromEntries(ITEMS.map(item => [item.id, 5])), cart: {}, boxType: null, box: [], active: null, queue: [], spawnT: 0,
+  shopping: false, completed: 0, debt: 0, showingResult: false,
 };
 
 const capacity = () => state.boxType ? state.boxType.slots : 0;
