@@ -36,11 +36,11 @@ function createGame(options = {}) {
 test('purchases fill inventory without a customer or box; packing spends no gold', () => {
   const run = createGame();
   run("addToCart('pot1'); addToCart('pot1');");
-  assert.equal(run('state.gold'), 100);
+  assert.equal(run('state.gold'), 500);
   assert.equal(run('state.cart.pot1'), 2);
   assert.equal(run('state.inventory.pot1'), undefined);
   run('checkout()');
-  assert.equal(run('state.gold'), 90);
+  assert.equal(run('state.gold'), 490);
   assert.equal(run('state.inventory.pot1'), 2);
   assert.equal(run('state.box.length'), 0);
   run("packItem('pot1')");
@@ -48,11 +48,11 @@ test('purchases fill inventory without a customer or box; packing spends no gold
   run("finishShopping(); selectCustomer(state.queue[0].id); chooseBox('small'); packItem('pot1');");
   assert.equal(run('state.inventory.pot1'), 1);
   assert.equal(run('state.box.length'), 1);
-  assert.equal(run('state.gold'), 90);
+  assert.equal(run('state.gold'), 490);
   assert.match(run("$('preview').innerHTML"), /Itemkosten: 5/);
   run('removeFromBox(0)');
   assert.equal(run('state.inventory.pot1'), 2);
-  assert.equal(run('state.gold'), 90);
+  assert.equal(run('state.gold'), 490);
   assert.match(run("$('preview').innerHTML"), /Itemkosten: 0/);
 });
 
@@ -68,7 +68,7 @@ test('inventory and weight limit packing; merchant is unavailable during the rou
   run("packItem('wand')");
   assert.equal(run('state.box.length'), 10);
   run("addToCart('pot3'); checkout()");
-  assert.equal(run('state.gold'), 40);
+  assert.equal(run('state.gold'), 440);
 });
 
 test('box and customer switches return items; sending consumes only packed items', () => {
@@ -82,7 +82,7 @@ test('box and customer switches return items; sending consumes only packed items
   run("packItem('pot1'); selectCustomer(state.queue[0].id);");
   assert.equal(run('state.box.length'), 0);
   assert.equal(run('state.inventory.pot1'), 2);
-  assert.equal(run('state.gold'), 90);
+  assert.equal(run('state.gold'), 490);
   run("chooseBox('small'); packItem('pot1'); state.active.itemRewards = []; globalThis.expectedGold = state.gold + rewardFor(quality(), state.active).gold; send();");
   assert.equal(run('state.gold'), run('expectedGold'));
   assert.equal(run('state.inventory.pot1'), 1);
@@ -94,8 +94,8 @@ test('box and customer switches return items; sending consumes only packed items
 
 test('item reward thresholds respect rarity and upgrade rather than accumulate', () => {
   const run = createGame();
-  for (const [rarity, levels] of [['common', 1], ['rare', 2], ['epic', 3]]) {
-    run(`globalThis.rollRarity = () => '${rarity}'; globalThis.customer = generateCustomer();`);
+  for (const [tier, rarity, levels] of [['wannabe', 'common', 1], ['adventurer', 'common', 1], ['hero', 'rare', 2], ['demigod', 'epic', 3]]) {
+    run(`globalThis.rollCustomerTier = () => CUSTOMER_TIERS.find(t => t.id === '${tier}'); globalThis.customer = generateCustomer();`);
     assert.equal(run('customer.itemRewards.length'), levels);
     assert.equal(run('rewardFor(0, customer).item'), null);
     assert.equal(run('rewardFor(0.299999, customer).item'), null);
@@ -109,7 +109,7 @@ test('item reward thresholds respect rarity and upgrade rather than accumulate',
 
 test('advertised reward stays fixed and sending grants exactly one item once', () => {
   const run = createGame();
-  run(`globalThis.rollRarity = () => 'epic';
+  run(`globalThis.rollCustomerTier = () => CUSTOMER_TIERS.find(t => t.id === 'demigod');
     state.queue = [generateCustomer()];
     addToCart('pot1'); checkout(); finishShopping();
     selectCustomer(state.queue[0].id);
@@ -138,6 +138,29 @@ test('empty or irrelevant boxes grant no items', () => {
   assert.equal(run('Object.values(state.inventory).reduce((a, b) => a + b, 0)'), 0);
 });
 
+test('customers are distributed across four tiers with easy wannabes and strongest demigods', () => {
+  const run = createGame();
+  assert.equal(run('CUSTOMER_TIERS.reduce((sum, tier) => sum + tier.weight, 0)'), 100);
+  for (const [roll, expected] of [[0, 'wannabe'], [0.5, 'adventurer'], [0.82, 'hero'], [0.97, 'demigod']]) {
+    run(`Math.random = () => ${roll}`);
+    assert.equal(run('rollCustomerTier().id'), expected);
+  }
+  run(`Math.random = () => 0;
+    globalThis.rollCustomerTier = () => CUSTOMER_TIERS.find(t => t.id === 'wannabe');
+    globalThis.wannabe = generateCustomer();`);
+  assert.ok(run('wannabe.needs.length <= 2'));
+  assert.ok(run('wannabe.needs.every(need => need.prio <= 2)'));
+  assert.ok(run('wannabe.needs.every(need => need.target <= 15)'));
+  run(`globalThis.rollCustomerTier = () => CUSTOMER_TIERS.find(t => t.id === 'hero');
+    globalThis.hero = generateCustomer();
+    globalThis.rollCustomerTier = () => CUSTOMER_TIERS.find(t => t.id === 'demigod');
+    globalThis.demigod = generateCustomer();`);
+  assert.equal(run('hero.tierLabel'), 'Held');
+  assert.equal(run('demigod.tierLabel'), 'Demi-Gott');
+  assert.ok(run('demigod.needs.every(need => need.target >= 70)'));
+  assert.equal(run('state.gold'), 500);
+});
+
 test('merchant pauses customers, blocks selection, and returns after exactly five deliveries each round', () => {
   const run = createGame();
   run('globalThis.initialTime = state.queue[0].timeLeft; tick(10); selectCustomer(state.queue[0].id);');
@@ -161,8 +184,9 @@ test('merchant pauses customers, blocks selection, and returns after exactly fiv
 test('emergency package costs gold and contains three basic items across at least two attributes', () => {
   const run = createGame();
   run('emergencyRestock()');
-  assert.equal(run('state.gold'), 100);
+  assert.equal(run('state.gold'), 500);
   run('finishShopping()');
+  run('state.gold = 100');
   for (let i = 0; i < 5; i++) {
     run('state.inventory = {}; emergencyRestock();');
     assert.equal(run('Object.values(state.inventory).reduce((a, b) => a + b, 0)'), 3);
@@ -210,7 +234,7 @@ test('merchant dialog opens at the start and after the fifth result, and closes 
   assert.equal(run("$('shopDialog').open"), true);
   run("addToCart('pot1'); checkout()");
   assert.equal(run("$('shopDialog').open"), true);
-  assert.equal(run("$('shopGold').textContent"), 95);
+  assert.equal(run("$('shopGold').textContent"), 495);
   run('finishShopping()');
   assert.equal(run("$('shopDialog').open"), false);
   for (let i = 0; i < 5; i++) {
@@ -226,7 +250,7 @@ test('merchant dialog opens at the start and after the fifth result, and closes 
 test('cart quantities track stock, remain staged until checkout, and over-budget checkout changes nothing', () => {
   const run = createGame();
   run("state.inventory.pot1 = 2; addToCart('pot1'); addToCart('pot2');");
-  assert.equal(run('state.gold'), 100);
+  assert.equal(run('state.gold'), 500);
   assert.equal(run('state.inventory.pot1'), 2);
   assert.equal(run('state.cart.pot1'), 1);
   assert.match(run("$('shop').innerHTML"), /Im Lager: 2 · Im Warenkorb: 1/);
@@ -259,5 +283,5 @@ test('ending shopping with staged items asks before discarding them', () => {
   run('finishShopping()');
   assert.equal(run('state.shopping'), false);
   assert.equal(run('state.cart.pot1'), undefined);
-  assert.equal(run('state.gold'), 100);
+  assert.equal(run('state.gold'), 500);
 });

@@ -53,17 +53,33 @@ const CLASSES = [
   { cls: 'Gaukler',       icon: '🎭',   needs: [ { attr: 'hp', prio: 2, target: 20 }, { attr: 'magic', prio: 1, target: 15 } ] },
 ];
 
-const EPIC_CLASSES = [
-  { cls: 'König',      icon: '👑', needs: [ { attr: 'hp', prio: 3, target: 70 }, { attr: 'armor', prio: 3, target: 40 }, { attr: 'melee', prio: 2, target: 20 } ] },
-  { cls: 'Held',       icon: '🦸', needs: [ { attr: 'melee', prio: 3, target: 45 }, { attr: 'hp', prio: 3, target: 50 }, { attr: 'armor', prio: 2, target: 30 } ] },
-  { cls: 'Erzmagier',  icon: '🔮', needs: [ { attr: 'magic', prio: 3, target: 60 }, { attr: 'hp', prio: 2, target: 40 }, { attr: 'armor', prio: 1, target: 20 } ] },
+const WANNABE_CLASSES = [
+  { cls: 'Lehrling',       icon: '🧑‍🎓', needs: [ { attr: 'magic', prio: 2, target: 15 } ] },
+  { cls: 'Page',           icon: '🛡️',   needs: [ { attr: 'hp', prio: 1, target: 10 }, { attr: 'armor', prio: 2, target: 10 } ] },
+  { cls: 'Laufbursche',    icon: '🏃',   needs: [ { attr: 'hp', prio: 1, target: 10 } ] },
+  { cls: 'Kräutersammler', icon: '🌿',   needs: [ { attr: 'hp', prio: 2, target: 15 }, { attr: 'magic', prio: 1, target: 10 } ] },
+  { cls: 'Glücksritter',   icon: '🍀',   needs: [ { attr: 'melee', prio: 2, target: 15 }, { attr: 'hp', prio: 1, target: 10 } ] },
+  { cls: 'Reisender',      icon: '🎒',   needs: [ { attr: 'armor', prio: 1, target: 10 } ] },
+];
+
+const HERO_CLASSES = [
+  { cls: 'Drachenjäger', icon: '🐉', needs: [ { attr: 'melee', prio: 3, target: 45 }, { attr: 'hp', prio: 3, target: 50 }, { attr: 'armor', prio: 2, target: 30 } ] },
+  { cls: 'Erzmagier',    icon: '🔮', needs: [ { attr: 'magic', prio: 3, target: 60 }, { attr: 'hp', prio: 2, target: 40 }, { attr: 'armor', prio: 1, target: 20 } ] },
+  { cls: 'Champion',     icon: '🏆', needs: [ { attr: 'melee', prio: 3, target: 40 }, { attr: 'armor', prio: 3, target: 35 }, { attr: 'hp', prio: 2, target: 40 } ] },
+  { cls: 'Phönixritter', icon: '🔥', needs: [ { attr: 'hp', prio: 3, target: 50 }, { attr: 'magic', prio: 3, target: 35 }, { attr: 'armor', prio: 2, target: 30 } ] },
+];
+
+const DEMIGOD_CLASSES = [
+  { cls: 'Sturmherr',       icon: '🌩️', needs: [ { attr: 'magic', prio: 3, target: 100 }, { attr: 'armor', prio: 3, target: 70 }, { attr: 'hp', prio: 3, target: 80 } ] },
+  { cls: 'Weltenwächterin', icon: '🌌', needs: [ { attr: 'hp', prio: 3, target: 110 }, { attr: 'melee', prio: 3, target: 75 }, { attr: 'armor', prio: 3, target: 80 } ] },
+  { cls: 'Sonnengott',      icon: '☀️', needs: [ { attr: 'magic', prio: 3, target: 120 }, { attr: 'hp', prio: 3, target: 90 }, { attr: 'melee', prio: 2, target: 60 } ] },
 ];
 
 // mult: Belohnungsfaktor, time: Sekunden bis der Kunde geht, scale: Skalierung der Zielwerte
 const RARITY = {
-  common: { label: 'Gewöhnlich', mult: 1, time: 90, scale: 1,    weight: 70 },
-  rare:   { label: 'Selten',     mult: 2, time: 75, scale: 1.25, weight: 22 },
-  epic:   { label: 'Episch',     mult: 4, time: 60, scale: 1,    weight: 8 },
+  common: { label: 'Gewöhnlich', mult: 1, time: 90 },
+  rare:   { label: 'Selten',     mult: 2, time: 75 },
+  epic:   { label: 'Episch',     mult: 4, time: 60 },
 };
 const QUEUE_SIZE = 3;
 const SPAWN_INTERVAL = 5;
@@ -76,34 +92,48 @@ const ITEM_REWARDS = [
   { quality: 0.6, rarities: ['rare', 'epic'], ids: ['pot2', 'sword'] },
   { quality: 0.9, rarities: ['epic'], ids: ['pot3', 'plate'] },
 ];
+const CUSTOMER_TIERS = [
+  { id: 'wannabe', label: 'Wannabe', weight: 50, scale: 0.6, rarity: 'common', time: 120 },
+  { id: 'adventurer', label: 'Abenteurer', weight: 32, scale: 1, rarity: 'common', time: 90 },
+  { id: 'hero', label: 'Held', weight: 15, scale: 1.2, rarity: 'rare', time: 75 },
+  { id: 'demigod', label: 'Demi-Gott', weight: 3, scale: 1.5, rarity: 'epic', time: 60 },
+];
 
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 
-function rollRarity() {
-  let r = Math.random() * 100;
-  for (const [key, def] of Object.entries(RARITY)) {
-    if ((r -= def.weight) < 0) return key;
+let nextId = 1;
+function rollCustomerTier() {
+  let value = Math.random() * 100;
+  for (const tier of CUSTOMER_TIERS) {
+    value -= tier.weight;
+    if (value < 0) return tier;
   }
-  return 'common';
+  return CUSTOMER_TIERS[0];
 }
 
-let nextId = 1;
 // Zielwerte schwanken um ±20% (auf 5 gerundet), damit gleiche Klassen nicht identisch sind.
 function generateCustomer() {
-  const rarity = rollRarity();
+  const tier = rollCustomerTier();
+  const rarity = tier.rarity;
   const def = RARITY[rarity];
-  const base = pick(rarity === 'epic' ? EPIC_CLASSES : CLASSES);
-  const needs = base.needs.map(n => ({ ...n, target: Math.max(5, Math.round(n.target * def.scale * (0.8 + Math.random() * 0.4) / 5) * 5) }));
+  const classes = {
+    wannabe: WANNABE_CLASSES,
+    adventurer: CLASSES,
+    hero: HERO_CLASSES,
+    demigod: DEMIGOD_CLASSES,
+  }[tier.id];
+  const base = pick(classes);
+  const needs = base.needs.map(n => ({ ...n, target: Math.max(5, Math.round(n.target * tier.scale * (0.8 + Math.random() * 0.4) / 5) * 5) }));
   const itemRewards = ITEM_REWARDS.filter(tier => tier.rarities.includes(rarity))
     .map(tier => {
       const id = pick(tier.ids);
       return { quality: tier.quality, item: ITEMS.find(it => it.id === id) };
     });
-  return { id: nextId++, name: pick(NAMES), cls: base.cls, icon: base.icon, needs, rarity, itemRewards, timeLeft: def.time, maxTime: def.time };
+  return { id: nextId++, name: pick(NAMES), cls: base.cls, icon: base.icon, needs, rarity, tier: tier.id, tierLabel: tier.label, itemRewards, timeLeft: tier.time || def.time, maxTime: tier.time || def.time };
 }
 
 const state = {
-  gold: 100, exp: 0, inventory: {}, cart: {}, boxType: null, box: [], active: null, queue: [], spawnT: 0,
+  gold: 500, exp: 0, inventory: {}, cart: {}, boxType: null, box: [], active: null, queue: [], spawnT: 0,
   shopping: true, completed: 0, debt: 0, showingResult: false,
 };
 
@@ -333,9 +363,9 @@ function renderQueue() {
   $('queue').innerHTML = state.queue.length ? state.queue.map(c => {
     const needs = c.needs.map(n => `<span class="need-icons">${ATTRS[n.attr].icon.repeat(n.prio)}</span>`).join('');
     const m = RARITY[c.rarity].mult;
-    return `<button class="queue-item r-${c.rarity}" data-cid="${c.id}" ${state.shopping || state.showingResult ? 'disabled' : ''}>
+    return `<button class="queue-item r-${c.rarity} tier-${c.tier}" data-cid="${c.id}" ${state.shopping || state.showingResult ? 'disabled' : ''}>
       <span class="ico">${c.icon}</span>
-      <span class="txt">${c.name} <small>${c.cls}</small><span class="needs">${needs}</span>${itemRewardsHtml(c)}</span>
+      <span class="txt">${c.name} <small>${c.cls} · ${c.tierLabel}</small><span class="needs">${needs}</span>${itemRewardsHtml(c)}</span>
       <span class="mult">${m > 1 ? '×' + m : ''}</span>
       <span class="secs">${Math.ceil(c.timeLeft)}s</span>
       <span class="timer"><div style="width:${Math.max(0, c.timeLeft / c.maxTime * 100)}%"></div></span>
@@ -371,7 +401,7 @@ function render() {
   $('restockHint').textContent = `${RESTOCK_SIZE} zufällige Basis-Items: kleiner Heiltrank, Dolch, Holzschild oder Zauberstab. Mindestens zwei Attribute. Fehlendes Gold wird als Vorschuss mit künftigen Goldbelohnungen verrechnet. ${state.debt ? 'Kein weiterer Vorschuss, bis die offene Gebühr bezahlt ist.' : ''}`;
 
   $('customer').innerHTML = c
-    ? `<div class="cust-name r-${c.rarity}">${c.icon} ${c.name} <small>${c.cls} · ${RARITY[c.rarity].label}</small></div>` + needsHtml(c, totals()) + itemRewardsHtml(c)
+    ? `<div class="cust-name r-${c.rarity} tier-${c.tier}">${c.icon} ${c.name} <small>${c.cls} · ${c.tierLabel} · ${RARITY[c.rarity].label}</small></div>` + needsHtml(c, totals()) + itemRewardsHtml(c)
     : '<div class="empty">Wähle einen Kunden aus der Liste</div>';
 
   const used = usedWeight();

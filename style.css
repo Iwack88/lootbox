@@ -93,6 +93,10 @@ button.primary:active { transform: scale(.98); }
 .r-rare .timer > div { background: #4aa3ff; }
 .r-epic { border-left-color: #ffd166; background: #46385e; }
 .r-epic .timer > div { background: #ffd166; }
+.tier-wannabe { border-left-color: #8a88b0; }
+.tier-adventurer { border-left-color: #4cc38a; }
+.tier-hero { border-left-color: #4aa3ff; }
+.tier-demigod { border-left-color: #ffd166; background: #46385e; }
 .cust-name.r-rare { color: #4aa3ff; }
 .cust-name.r-epic { color: #ffd166; }
 .cust-name small { font-size: 13px; font-weight: 400; opacity: .8; }
