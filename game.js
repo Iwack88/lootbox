@@ -1,13 +1,4 @@
 const $ = id => document.getElementById(id);
-const desktopLayout = matchMedia('(min-width: 900px)');
-
-function openDesktopPanels() {
-  if (desktopLayout.matches) {
-    for (const id of ['queueCard', 'custCard', 'pickCard', 'boxCard', 'inventoryCard']) $(id).open = true;
-  }
-}
-desktopLayout.addEventListener('change', openDesktopPanels);
-
 const ATTRS = {
   hp:    { name: 'Leben',    icon: '❤️' },
   melee: { name: 'Nahkampf', icon: '⚔️' },
@@ -381,7 +372,6 @@ function finishShopping() {
   state.shopping = false;
   state.activeDiscount = null;
   $('checkoutMessage').textContent = '';
-  $('queueCard').open = true;
   sfx.play('select');
   render();
 }
@@ -418,7 +408,6 @@ function removeFromBox(index) {
   render();
 }
 
-// Der bisher aktive Kunde nimmt den Platz des gewählten in der Liste ein; seine Zeit läuft dort weiter.
 function selectCustomer(id) {
   if (state.shopping || state.showingResult) return;
   const i = state.queue.findIndex(c => c.id === id);
@@ -429,25 +418,41 @@ function selectCustomer(id) {
   else state.queue.splice(i, 1);
   state.active = chosen;
   state.boxType = null;
-  if (autoCollapse && !desktopLayout.matches) {
-    $('queueCard').open = false;
-    for (const id of ['custCard', 'pickCard', 'boxCard']) $(id).open = true;
-    $('inventoryCard').open = false;
-  }
-  openDesktopPanels();
   sfx.play('select');
   render();
+  $('orderTitle').focus();
 }
 
 function chooseBox(id) {
   const type = BOXES.find(b => b.id === id);
-  if (!state.active || !type || !isUnlocked(type)) return;
+  if (state.shopping || state.showingResult || !state.active || !type || !isUnlocked(type)) return;
   if (state.boxType === type) return;
   returnBoxToInventory();
   state.boxType = type;
   $('inventoryCard').open = true;
   sfx.play('box');
   render();
+  $('orderDialog').scrollTop = 0;
+  $('packingTitle').focus();
+}
+
+function backToBoxes() {
+  if (state.shopping || state.showingResult || !state.active || !state.boxType) return;
+  returnBoxToInventory();
+  state.boxType = null;
+  sfx.play('select');
+  render();
+  $('orderDialog').scrollTop = 0;
+  $('orderTitle').focus();
+}
+
+function backToCustomers() {
+  if (state.shopping || state.showingResult || !state.active || state.boxType) return;
+  state.queue.unshift(state.active);
+  state.active = null;
+  sfx.play('select');
+  render();
+  $('queueTitle').focus();
 }
 
 function send() {
@@ -495,11 +500,12 @@ function send() {
   render();
   $('result').classList.remove('hidden');
   $('result').scrollTop = 0;
+  $('next').focus();
   $('next').onclick = () => {
     state.showingResult = false;
     $('result').classList.add('hidden');
-    if (!state.shopping && autoCollapse) $('queueCard').open = true;
     render();
+    if (!state.shopping) $('queueTitle').focus();
     if (state.shopping) sfx.play('merchant');
   };
 }
@@ -519,7 +525,7 @@ function tick(dt) {
   }
 
   state.spawnT -= dt;
-  if (state.spawnT <= 0 && state.queue.length < queueCapacity()) {
+  if (state.spawnT <= 0 && state.queue.length + (state.active ? 1 : 0) < queueCapacity()) {
     state.queue.push(generateCustomer());
     if (!departed) sfx.play('arrival');
     state.spawnT = SPAWN_INTERVAL;
@@ -573,7 +579,7 @@ function renderQueue() {
     </button>`;
   }).join('') : '<div class="empty">Gerade keine Kunden…</div>';
   $('queue').querySelectorAll('.queue-item').forEach(el => el.onclick = () => selectCustomer(+el.dataset.cid));
-  $('queueInfo').textContent = `${state.queue.length}/${queueCapacity()}`;
+  $('queueInfo').textContent = `${state.queue.length}/${queueCapacity()}${state.active ? ' · 1 in Bearbeitung' : ''}`;
 }
 
 function render() {
@@ -614,6 +620,9 @@ function render() {
   $('customer').innerHTML = c
     ? `<div class="cust-name r-${c.rarity} tier-${c.tier}">${c.icon} ${c.name} <small>${c.cls} · ${c.tierLabel} · ${RARITY[c.rarity].label}</small></div>` + needsHtml(c, totals()) + itemRewardHtml(c, !!rewardFor(quality(), c).item)
     : '<div class="empty">Wähle einen Kunden aus der Liste</div>';
+  $('selectionCustomer').innerHTML = c
+    ? `<div class="cust-name r-${c.rarity} tier-${c.tier}">${c.icon} ${c.name} <small>${c.cls} · ${c.tierLabel} · ${RARITY[c.rarity].label}</small></div>` + needsHtml(c, {}) + itemRewardHtml(c)
+    : '';
 
   const used = usedSlots();
   $('box').innerHTML = state.box.length
@@ -672,6 +681,12 @@ function render() {
   renderInventory();
   renderPicker();
   renderQueue();
+  const orderDialog = $('orderDialog');
+  $('boxSelection').hidden = !c || !!state.boxType;
+  $('packingView').hidden = !c || !state.boxType;
+  orderDialog.setAttribute('aria-labelledby', state.boxType ? 'packingTitle' : 'orderTitle');
+  if (c && !state.shopping && !state.showingResult && !orderDialog.open) orderDialog.showModal();
+  else if ((!c || state.shopping || state.showingResult) && orderDialog.open) orderDialog.close();
 }
 
 function renderInventory() {
@@ -707,19 +722,13 @@ function renderPicker() {
   $('pickInfo').textContent = state.boxType ? state.boxType.name : '';
 }
 
-// Auto-Einklappen der Kundenliste: nach Kundenwahl zu, nach dem Absenden wieder auf.
-let autoCollapse = localStorage.getItem('autoCollapseQueue') !== '0';
-function renderAuto() { $('autoToggle').textContent = (autoCollapse ? '☑' : '☐') + ' Auto-Einklappen'; }
-$('autoToggle').onclick = e => {
-  e.preventDefault();
-  e.stopPropagation();
-  autoCollapse = !autoCollapse;
-  localStorage.setItem('autoCollapseQueue', autoCollapse ? '1' : '0');
-  renderAuto();
-};
-renderAuto();
-
 $('send').onclick = send;
+$('backToBoxes').onclick = backToBoxes;
+$('backToCustomers').onclick = backToCustomers;
+$('orderDialog').addEventListener('cancel', event => {
+  event.preventDefault();
+  if (state.boxType) backToBoxes(); else backToCustomers();
+});
 $('finishShopping').onclick = finishShopping;
 $('checkout').onclick = checkout;
 $('shopDialog').addEventListener('cancel', event => event.preventDefault());

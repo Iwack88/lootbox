@@ -20,8 +20,9 @@ function createGame(options = {}) {
           elements.set(id, {
             classList: { add() {}, remove() {}, toggle() {} },
             style: {},
+            listeners: {},
             querySelectorAll: () => [],
-            addEventListener() {},
+            addEventListener(type, listener) { this.listeners[type] = listener; },
             setAttribute(name, value) { this[name] = value; },
             showModal() { this.open = true; },
             close() { this.open = false; },
@@ -365,16 +366,52 @@ test('restock advances only missing gold and debt is deducted from rewards witho
   assert.equal(run('state.debt'), 13);
 });
 
-test('desktop selection keeps panels visible while mobile retains auto-collapse', () => {
+test('order flow supports back navigation, restores items and reserves a place for the active customer', () => {
   const run = createGame();
-  run(`finishShopping(); selectCustomer(state.queue[0].id);`);
-  assert.equal(run("$('queueCard').open"), false);
-  run(`desktopLayout.matches = true; openDesktopPanels();`);
-  assert.equal(run("$('queueCard').open"), true);
-  run('selectCustomer(state.queue[0].id)');
-  for (const id of ['queueCard', 'custCard', 'pickCard', 'boxCard', 'inventoryCard']) {
-    assert.equal(run(`$('${id}').open`), true);
-  }
+  run(`globalThis.id = state.queue[0].id; globalThis.time = state.queue[0].timeLeft;
+    globalThis.offer = JSON.stringify(state.queue[0].itemReward); selectCustomer(id);`);
+  assert.equal(run("$('orderDialog').open"), true);
+  assert.equal(run("$('boxSelection').hidden"), false);
+  assert.equal(run("$('packingView').hidden"), true);
+  run(`tick(10); chooseBox('small'); packItem('pot1');`);
+  assert.equal(run('state.active.timeLeft'), run('time'));
+  assert.equal(run('state.queue.length'), 2);
+  assert.equal(run("$('packingView').hidden"), false);
+  assert.equal(run('state.inventory.pot1'), 4);
+  run("$('backToBoxes').onclick()");
+  assert.equal(run('state.inventory.pot1'), 5);
+  assert.equal(run('state.box.length'), 0);
+  assert.equal(run('state.boxType'), null);
+  assert.equal(run("$('boxSelection').hidden"), false);
+  assert.equal(run('JSON.stringify(state.active.itemReward)'), run('offer'));
+  run("$('backToCustomers').onclick()");
+  assert.equal(run("$('orderDialog').open"), false);
+  assert.equal(run('state.active'), null);
+  assert.equal(run('state.queue.length'), 3);
+  assert.equal(run('state.queue[0].id'), run('id'));
+  assert.equal(run('state.queue[0].timeLeft'), run('time'));
+  run('tick(1)');
+  assert.equal(run('state.queue[0].timeLeft'), run('time - 1'));
+});
+
+test('escape follows the same back steps and submitting closes the order overlay before showing the merchant', () => {
+  const run = createGame();
+  run(`state.completed = 4; selectCustomer(state.queue[0].id); chooseBox('small'); packItem('pot1');
+    globalThis.event = { prevented: false, preventDefault() { this.prevented = true; } };
+    $('orderDialog').listeners.cancel(event);`);
+  assert.equal(run('event.prevented'), true);
+  assert.equal(run('state.inventory.pot1'), 5);
+  assert.equal(run('state.boxType'), null);
+  run("$('orderDialog').listeners.cancel(event)");
+  assert.equal(run('state.active'), null);
+  assert.equal(run("$('orderDialog').open"), false);
+  run("selectCustomer(state.queue[0].id); chooseBox('small'); packItem('pot1'); send();");
+  assert.equal(run("$('orderDialog').open"), false);
+  assert.equal(run('state.showingResult'), true);
+  assert.equal(run("$('shopDialog').open"), undefined);
+  run("$('next').onclick()");
+  assert.equal(run("$('shopDialog').open"), true);
+  assert.equal(run("$('orderDialog').open"), false);
 });
 
 test('merchant dialog opens during shopping and after the fifth result, and closes when shopping ends', () => {
