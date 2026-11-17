@@ -51,7 +51,10 @@ function createGame(options = {}) {
     setInterval(callback) { intervals.push(callback); },
   });
   for (const file of ['sound.js', 'game.js']) {
-    vm.runInContext(readFileSync(`${__dirname}/${file}`, 'utf8'), context);
+    let source = readFileSync(`${__dirname}/${file}`, 'utf8');
+    // Keep regression coverage for the preserved merchant; new ordering tests use the live disabled mode.
+    if (file === 'game.js' && options.legacyMerchant !== false) source = source.replace('const MERCHANT_ENABLED = false;', 'const MERCHANT_ENABLED = true;');
+    vm.runInContext(source, context);
   }
   return code => vm.runInContext(code, context);
 }
@@ -106,6 +109,175 @@ function createShoppingGame(options = {}) {
   run('state.inventory = {}; state.exp = expForLevel(7); state.shopping = true; state.shopOffers = ITEMS.map(item => item.id); render();');
   return run;
 }
+
+function createOrderingGame(options = {}) {
+  return createGame({ ...options, legacyMerchant: false });
+}
+
+test('one order slot holds a chosen quantity of one item and prices scale per piece', () => {
+  const run = createOrderingGame();
+  run("openSupply(); placeOrder('bandage', 2)");
+  assert.equal(run('state.orders.length'), 1);
+  assert.equal(run('state.orders[0].quantity'), 2);
+  assert.equal(run('state.gold'), 494);
+  assert.equal(run('state.inventory.bandage'), undefined);
+  assert.equal(run('state.orders[0].finishAt - lastUpdatedAt'), 30 * 60000);
+  assert.match(run("$('deliverySlots').innerHTML"), /2× Verband/);
+  assert.match(run("$('supplySummary').textContent"), /1\/2 Bestellplätze/);
+  assert.equal((run("$('supplyInventory').innerHTML").match(/Vorrat:/g) || []).length, run('ITEMS.length'));
+  run("placeOrder('dag', 5); placeOrder('sparkStone', 1)");
+  assert.equal(run('state.orders.length'), 2);
+  assert.equal(run('state.gold'), 454);
+  assert.equal(run('state.orders[1].quantity'), 5);
+  assert.match(run("$('supplyMessage').textContent"), /Alle Bestellplätze/);
+});
+
+test('order quantities, item unlocks, availability, gold and parallel limits are enforced', () => {
+  const run = createOrderingGame();
+  for (const quantity of [0, -1, 1.5, 6, NaN, Infinity]) {
+    run(`placeOrder('bandage', ${quantity})`);
+    assert.equal(run('state.orders.length'), 0);
+    assert.equal(run('state.gold'), 500);
+  }
+  run("placeOrder('pot1', 1); placeOrder('unknown', 1)");
+  assert.equal(run('state.orders.length'), 0);
+  assert.match(run("$('supplyMessage').textContent"), /noch nicht bestellbar/);
+  run("state.gold = 2; placeOrder('bandage', 1)");
+  assert.equal(run('state.orders.length'), 0);
+  assert.match(run("$('supplyMessage').textContent"), /Nicht genug Gold/);
+  run("state.gold = 500; state.exp = expForLevel(4); placeOrder('pot1', 2)");
+  assert.equal(run('state.orders.length'), 1);
+  assert.equal(run('orderCapacity()'), 2);
+  run("state.exp = expForLevel(5); placeOrder('shield', 1); placeOrder('bandage', 5)");
+  assert.equal(run('state.orders.length'), 3);
+  run("state.exp = expForLevel(7); placeOrder('wand', 10)");
+  assert.equal(run('state.orders.length'), 3);
+  run("state.exp = expForLevel(10); placeOrder('wand', 10)");
+  assert.equal(run('state.orders.length'), 4);
+  assert.equal(run('state.orders[3].quantity'), 10);
+  assert.equal(run("canOrder(ITEMS.find(item => item.id === 'runeblade'))"), false);
+  assert.equal(run("isUnlocked(ITEMS.find(item => item.id === 'runeblade'))"), true);
+  run("renderRoadmap()");
+  assert.match(run("$('roadmap').innerHTML"), /Bestellungen: 3 parallele Plätze/);
+  assert.match(run("$('roadmap').innerHTML"), /Bestellmenge: bis zu 10 Stück/);
+  assert.match(run("$('roadmap').innerHTML"), /Bestellbar: Eisenschwert/);
+  assert.doesNotMatch(run("$('roadmap').innerHTML"), /Shop: \+1/);
+});
+
+test('deliveries survive reload, complete at the exact boundary offline, free slots and never charge or credit twice', () => {
+  const storage = new Map();
+  let now = 1_700_000_000_000;
+  const options = { storage, now: () => now };
+  const run = createOrderingGame(options);
+  run("placeOrder('bandage', 5); placeOrder('sparkStone', 2)");
+  const gold = run('state.gold');
+  now += 1_799_999;
+  const waiting = createOrderingGame(options);
+  assert.equal(waiting('state.orders.length'), 2);
+  assert.equal(waiting('state.inventory.bandage'), undefined);
+  assert.equal(waiting('state.gold'), gold);
+  now++;
+  const arrived = createOrderingGame(options);
+  assert.equal(arrived('state.orders.length'), 0);
+  assert.equal(arrived('state.inventory.bandage'), 5);
+  assert.equal(arrived('state.inventory.sparkStone'), 2);
+  assert.equal(arrived('state.gold'), gold);
+  const again = createOrderingGame(options);
+  assert.equal(again('state.inventory.bandage'), 5);
+  again("placeOrder('bandage', 1)");
+  assert.equal(again('state.orders.length'), 1);
+  now += 7 * 24 * 60 * 60 * 1000;
+  const longAbsence = createOrderingGame(options);
+  assert.equal(longAbsence('state.inventory.bandage'), 6);
+  assert.equal(longAbsence('state.orders.length'), 0);
+});
+
+test('deliveries also update the inventory of an active packing session and the visible supply menu', () => {
+  let now = 1_700_000_000_000;
+  const run = createOrderingGame({ now: () => now });
+  run("placeOrder('bandage', 2); selectCustomer(state.queue[0].id); chooseBox('small'); openSupply()");
+  assert.equal(run("$('orderDialog').open"), true);
+  assert.equal(run("$('supplyDialog').open"), true);
+  now += 1_800_000;
+  run("intervals[0]()");
+  assert.equal(run('state.orders.length'), 0);
+  assert.equal(run('state.inventory.bandage'), 2);
+  assert.match(run("$('supplyMessage').textContent"), /Angekommen: 2× Verband/);
+  assert.match(run("$('supplyInventory').innerHTML"), /Vorrat: 2/);
+  run("$('closeSupply').onclick(); packItem('bandage')");
+  assert.equal(run('state.box[0].id'), 'bandage');
+  assert.equal(run('state.inventory.bandage'), 1);
+});
+
+test('old merchant visits migrate without charging the cart and carry their active and pending discounts into orders', () => {
+  for (const version of [1, 2]) {
+    const storage = new Map();
+    const legacy = createGame({ storage });
+    legacy(`state.exp = expForLevel(5); changeStreak(25); state.pendingDiscounts = [25]; state.activeDiscount = 15;
+      state.shopping = true; state.shopOffers = rollShopOffers(); state.cart = {dag: 2}; render();`);
+    const key = legacy('SAVE_KEY');
+    const data = JSON.parse(storage.get(key));
+    data.version = version;
+    delete data.state.orders;
+    if (version === 1) { delete data.state.materials; delete data.state.crafts; }
+    storage.set(key, JSON.stringify(data));
+    const run = createOrderingGame({ storage });
+    assert.equal(run('savingBlocked'), false);
+    assert.equal(run('state.gold'), 500);
+    assert.equal(run('state.shopping'), false);
+    assert.equal(run('cartQuantity()'), 0);
+    assert.equal(run('state.shopOffers.length'), 0);
+    assert.equal(run('state.activeDiscount'), null);
+    assert.deepEqual(JSON.parse(run('JSON.stringify(state.pendingDiscounts)')), [15, 25]);
+    run("placeOrder('dag', 5)");
+    assert.equal(run('state.gold'), 464); // 40 Gold minus 10%.
+    assert.equal(run('orderDiscount()'), 15);
+    run("placeOrder('bandage', 5)");
+    assert.equal(run('state.gold'), 451); // 15 Gold minus 15%, rounded up.
+    assert.equal(run('state.pendingDiscounts.length'), 0);
+    assert.equal(JSON.parse(storage.get(key)).version, 3);
+    const reloaded = createOrderingGame({ storage });
+    assert.equal(reloaded('state.gold'), 451);
+    assert.equal(reloaded('state.pendingDiscounts.length'), 0);
+  }
+});
+
+test('failed orders keep discounts and a fifth delivery no longer opens the preserved merchant', () => {
+  const run = createOrderingGame();
+  run("changeStreak(15); state.gold = 0; placeOrder('bandage', 2)");
+  assert.deepEqual(JSON.parse(run('JSON.stringify(state.pendingDiscounts)')), [15]);
+  run("state.gold = 500");
+  for (let i = 0; i < 5; i++) {
+    run(`state.queue = [generateCustomer()]; selectCustomer(state.queue[0].id); chooseBox('small'); send(); $('next').onclick();`);
+    assert.equal(run('state.shopping'), false);
+    assert.notEqual(run("$('shopDialog').open"), true);
+  }
+  run("addToCart('bandage'); checkout()");
+  assert.equal(run('cartQuantity()'), 0);
+  assert.equal(run("$('merchantPanel').hidden"), true);
+  assert.match(run("checkpointStatus(CHECKPOINTS[1])"), /Bestellung vorgemerkt/);
+});
+
+test('malformed orders are rejected without overwriting the old save', () => {
+  const seed = new Map();
+  const game = createOrderingGame({ storage: seed });
+  const key = game('SAVE_KEY');
+  for (const order of [
+    { item: 'bandage', quantity: 0, finishAt: 123 },
+    { item: 'bandage', quantity: 6, finishAt: 123 },
+    { item: 'bandage', quantity: 1.5, finishAt: 123 },
+    { item: 'pot1', quantity: 1, finishAt: 123 },
+    { item: 'bandage', quantity: 1, finishAt: -1 },
+  ]) {
+    const data = JSON.parse(seed.get(key));
+    data.state.orders = [order];
+    const raw = JSON.stringify(data);
+    const storage = new Map([[key, raw]]);
+    const restored = createOrderingGame({ storage, console: { error() {} } });
+    assert.equal(restored('savingBlocked'), true);
+    assert.equal(storage.get(key), raw);
+  }
+});
 
 test('resource rewards are fixed, visible, meet tier thresholds and grant streak points instead of an item', () => {
   for (const [tier, amount, threshold, points] of [
@@ -225,7 +397,7 @@ test('version 1 saves retain customers and progress and migrate to an empty work
   assert.equal(restored('state.active.itemReward.item.id'), data.state.active.rewardItem);
   assert.deepEqual(JSON.parse(restored('JSON.stringify(state.materials)')), { wood: 0, iron: 0, cloth: 0 });
   assert.equal(restored('state.crafts.length'), 0);
-  assert.equal(JSON.parse(storage.get(run('SAVE_KEY'))).version, 2);
+  assert.equal(JSON.parse(storage.get(run('SAVE_KEY'))).version, 3);
 });
 
 test('corrupt workshop data is rejected without replacing the local save', () => {
@@ -996,7 +1168,7 @@ test('a delivery earns its checkpoint package automatically and falling below th
   run('changeStreak(-1); changeStreak(1); render();');
   assert.equal(run('Object.values(state.inventory).reduce((a,b) => a+b, 0)'), 23);
   assert.deepEqual(JSON.parse(run('JSON.stringify(state.claimedCheckpoints)')), [10]);
-  assert.match(run("$('streakNext').textContent"), /15: 10 % Händlerrabatt/);
+  assert.match(run("$('streakNext').textContent"), /15: 10 % Rabatt/);
 });
 
 test('crossing several checkpoints grants each once, queues separate discounts, and packages obey item unlocks', () => {

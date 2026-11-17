@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1b1a2e">
 <meta http-equiv="Cache-Control" content="no-cache">
 <title>Lootbox Packer</title>
-<link rel="stylesheet" href="style.css?v=23">
+<link rel="stylesheet" href="style.css?v=24">
 </head>
 <body>
 <header>
@@ -34,13 +34,18 @@
   <progress id="levelProgress" max="100" value="0" aria-label="Fortschritt zum nächsten Level"></progress>
 </div>
 
-<div class="merchant-status">
+<div id="merchantPanel" class="merchant-status" hidden>
   <span id="merchantStatus"></span>
   <progress id="merchantProgress" max="5" value="0" aria-label="Fortschritt bis zum Händler"></progress>
   <span id="debtInfo"></span>
 </div>
 
 <main class="home">
+<section class="card">
+  <h2>📦 Inventar &amp; Bestellungen</h2>
+  <p id="supplySummary" class="hint"></p>
+  <button id="openSupply" class="secondary" aria-haspopup="dialog" aria-controls="supplyDialog">Inventar öffnen</button>
+</section>
 <section class="card workshop-home">
   <h2>🔨 Werkstatt</h2>
   <p id="workshopSummary" class="hint"></p>
@@ -92,6 +97,7 @@
 
 <details class="card" id="inventoryCard" open>
   <summary>Inventar <small id="inventoryInfo"></small></summary>
+  <button id="packingSupply" class="secondary">Vorrat ansehen &amp; nachbestellen</button>
   <p class="hint">Tippe auf ein Item, um es einzupacken. Jedes Item belegt einen Slot. Kleine Items sparen Gold, starke Items sparen Platz. Grüne Items verbinden zwei Attribute. Needs dürfen übererfüllt werden – exakt zu packen spart nur Ressourcen. Entfernte Items gehen zurück ins Lager.</p>
   <div id="inventory" class="shop"></div>
   <div class="restock-panel">
@@ -105,6 +111,7 @@
 </section>
 </dialog>
 
+<!-- Händler vorerst deaktiviert; Oberfläche für eine spätere Rückkehr erhalten. -->
 <dialog id="shopDialog" class="merchant-dialog" aria-labelledby="shopTitle">
   <div class="merchant-heading">
     <h2 id="shopTitle">🛒 Händler</h2>
@@ -136,6 +143,22 @@
   <button id="finishShopping" class="primary">Einkauf beenden</button>
 </dialog>
 
+<dialog id="supplyDialog" class="merchant-dialog" aria-labelledby="supplyTitle">
+  <div class="merchant-heading">
+    <h2 id="supplyTitle">Inventar &amp; Bestellungen</h2>
+    <button id="closeSupply" class="secondary">Zurück</button>
+  </div>
+  <p id="supplySaveStatus" class="hint" role="status"></p>
+  <p>💰 <b id="supplyGold">0</b> Gold</p>
+  <p class="hint">Ein Bestellplatz = ein Itemtyp mit wählbarer Menge. Jede Lieferung dauert 30 Minuten, unabhängig von der Menge, und landet automatisch im Inventar – auch offline. Du bezahlst sofort. Preise entsprechen den bisherigen Händlerpreisen (+25 %, aufgerundet). Der Händler pausiert vorerst.</p>
+  <p id="supplyDiscount" class="hint"></p>
+  <p id="supplyMessage" class="hint" role="status"></p>
+  <h3>Unterwegs</h3>
+  <div id="deliverySlots" class="shop"></div>
+  <h3>Alle Items &amp; Vorrat</h3>
+  <div id="supplyInventory" class="shop"></div>
+</dialog>
+
 <dialog id="workshopDialog" class="merchant-dialog" aria-labelledby="workshopTitle">
   <div class="merchant-heading">
     <h2 id="workshopTitle">🔨 Werkstatt</h2>
@@ -165,12 +188,12 @@
     <button id="closeStreak" class="secondary">Schließen</button>
   </div>
   <p id="streakRules" class="hint"></p>
-  <p class="hint">Jeder Checkpunkt gibt seinen Bonus einmal pro Spielstand. Abwesenheit kostet keine Punkte. Pakete landen automatisch im Inventar. Rabatte gelten je einen ganzen Händlerbesuch, auch bei mehreren Checkouts, und enden mit „Einkauf beenden“. Mehrere Rabatte gelten für aufeinanderfolgende Besuche.</p>
+  <p class="hint">Jeder Checkpunkt gibt seinen Bonus einmal pro Spielstand. Abwesenheit kostet keine Punkte. Pakete landen automatisch im Inventar. Ein Rabatt gilt für eine gesamte Bestellung eines Itemtyps. Mehrere Rabatte gelten für aufeinanderfolgende Bestellungen. Bereits verdiente Händlerrabatte bleiben als Bestellrabatte erhalten.</p>
   <div id="streakRewards"></div>
 </dialog>
 
 <div id="result" class="overlay hidden"></div>
-<script src="sound.js?v=23"></script>
-<script src="game.js?v=23"></script>
+<script src="sound.js?v=24"></script>
+<script src="game.js?v=24"></script>
 </body>
 </html>

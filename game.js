@@ -115,12 +115,22 @@ const CUSTOMER_PLACES = [
 ];
 const SPAWN_INTERVAL = 30 * 60;
 const MERCHANT_INTERVAL = 5;
+// Händler vorerst aus dem Spielablauf genommen; Code für eine spätere Rückkehr erhalten.
+const MERCHANT_ENABLED = false;
 const RESTOCK_COST = 20;
 const RESTOCK_SIZE = 3;
 const RESTOCK_IDS = ['pot1', 'dag', 'shield', 'wand'];
 const SHOP_BASE_IDS = ['bandage', 'dag', 'leatherCap', 'sparkStone'];
 const SHOP_SLOT_INTERVAL = 5;
 const shopPrice = item => Math.ceil(item.cost * 1.25);
+const ORDER_DURATION = 30 * 60 * 1000;
+const ORDER_SLOTS = [{ level: 1, count: 2 }, { level: 5, count: 3 }, { level: 10, count: 4 }];
+const ORDER_QUANTITIES = [{ level: 1, count: 5 }, { level: 7, count: 10 }];
+const ORDER_CATALOG = [
+  ...SHOP_BASE_IDS.map(item => ({ item, level: 1 })),
+  { item: 'pot1', level: 4 }, { item: 'shield', level: 5 }, { item: 'wand', level: 6 },
+  { item: 'ironSword', level: 8 }, { item: 'steelShield', level: 10 },
+];
 const MATERIALS = {
   wood: { name: 'Holz', icon: '🪵' },
   iron: { name: 'Eisen', icon: '⛓️' },
@@ -147,9 +157,9 @@ const CUSTOMER_TIERS = [
 const CUSTOMER_CLASSES = { wannabe: WANNABE_CLASSES, adventurer: CLASSES, hero: HERO_CLASSES, demigod: DEMIGOD_CLASSES };
 const CHECKPOINTS = [
   { points: 10, icon: '🎁', title: '3 Basisitems', description: 'Drei zufällige Basisitems kommen sofort in dein Inventar.', package: 'basic' },
-  { points: 15, icon: '🏷️', title: '10 % Händlerrabatt', description: '10 % Rabatt während des gesamten nächsten Händlerbesuchs.', discount: 10 },
+  { points: 15, icon: '🏷️', title: '10 % Rabatt', description: MERCHANT_ENABLED ? '10 % Rabatt während des gesamten nächsten Händlerbesuchs.' : '10 % Rabatt auf eine Bestellung, auch auf mehrere Stück desselben Items.', discount: 10 },
   { points: 20, icon: '🎁', title: '3 bessere Items', description: 'Drei zufällige Items der höchsten bereits freigeschalteten Item-Stufe kommen sofort in dein Inventar.', package: 'best' },
-  { points: 25, icon: '🏷️', title: '15 % Händlerrabatt', description: '15 % Rabatt während eines weiteren Händlerbesuchs. Vorgemerkte Rabatte werden nacheinander genutzt, nicht addiert.', discount: 15 },
+  { points: 25, icon: '🏷️', title: '15 % Rabatt', description: MERCHANT_ENABLED ? '15 % Rabatt während eines weiteren Händlerbesuchs. Vorgemerkte Rabatte werden nacheinander genutzt, nicht addiert.' : '15 % Rabatt auf eine weitere Bestellung. Rabatte werden nacheinander genutzt, nicht addiert.', discount: 15 },
 ];
 
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
@@ -167,6 +177,11 @@ const isUnlocked = entry => progression().level >= entry.level;
 const queueCapacity = () => CUSTOMER_PLACES.filter(isUnlocked).at(-1).count;
 const workshopCapacity = (level = progression().level) => WORKSHOP_SLOTS.filter(entry => entry.level <= level).at(-1)?.count || 0;
 const craftDuration = (recipe, level = progression().level) => recipe.minutes * 60 * 1000 * (level >= 7 ? 0.8 : 1);
+const orderCapacity = (level = progression().level) => ORDER_SLOTS.filter(entry => entry.level <= level).at(-1).count;
+const orderQuantityLimit = (level = progression().level) => ORDER_QUANTITIES.filter(entry => entry.level <= level).at(-1).count;
+const canOrder = (item, level = progression().level) => item.level <= level && ORDER_CATALOG.some(entry => entry.item === item.id && entry.level <= level);
+const orderDiscount = () => CHECKPOINTS.find(entry => entry.points === state.pendingDiscounts[0])?.discount || 0;
+const orderPrice = (item, quantity) => Math.ceil(shopPrice(item) * quantity * (100 - orderDiscount()) / 100);
 
 const shopCapacity = (level = progression().level) => SHOP_BASE_IDS.length + Math.floor(level / SHOP_SLOT_INTERVAL);
 
@@ -196,8 +211,11 @@ function unlocksAtLevel(level) {
       return `Rezept: ${item.icon} ${item.name}`;
     }),
     ...(level === 7 ? ['Werkstatt: 20 % schnellere neue Herstellungsaufträge'] : []),
-    ...(level === 1 ? ['Shop: 4 feste Basis-Angebote – Verband, Kurzschwert, Lederkappe und Funkenstein'] : []),
-    ...(level % SHOP_SLOT_INTERVAL === 0 ? [`Shop: +1 zufälliger Angebotsplatz (${shopCapacity(level)} Plätze insgesamt) ab dem nächsten Händlerbesuch`] : []),
+    ...(MERCHANT_ENABLED && level === 1 ? ['Shop: 4 feste Basis-Angebote – Verband, Kurzschwert, Lederkappe und Funkenstein'] : []),
+    ...(MERCHANT_ENABLED && level % SHOP_SLOT_INTERVAL === 0 ? [`Shop: +1 zufälliger Angebotsplatz (${shopCapacity(level)} Plätze insgesamt) ab dem nächsten Händlerbesuch`] : []),
+    ...(!MERCHANT_ENABLED ? ORDER_SLOTS.filter(entry => entry.level === level).map(entry => `Bestellungen: ${entry.count} parallele Plätze`) : []),
+    ...(!MERCHANT_ENABLED ? ORDER_QUANTITIES.filter(entry => entry.level === level).map(entry => `Bestellmenge: bis zu ${entry.count} Stück pro Bestellung`) : []),
+    ...(!MERCHANT_ENABLED ? ORDER_CATALOG.filter(entry => entry.level === level).map(entry => `Bestellbar: ${ITEMS.find(item => item.id === entry.item).name}`) : []),
   ];
 }
 
@@ -212,7 +230,9 @@ function renderRoadmap() {
       <small>${expForLevel(milestone)} Gesamt-EXP${milestone > 1 ? ` · ${100 * (milestone - 1)} EXP ab Level ${milestone - 1}` : ''}</small>
       <ul>${unlocksAtLevel(milestone).map(unlock => `<li>${unlock}</li>`).join('')}</ul>
     </section>`;
-  }).join('') + '<p class="hint">Item-Freischaltungen erweitern den möglichen Angebots- und Belohnungspool, nicht automatisch dein Inventar oder das Shop-Sortiment. Vier schwächste Basis-Items sind immer im Shop. Alle fünf Level kommt ein zufälliger Angebotsplatz dazu. Die Auswahl wird pro Händlerbesuch neu gezogen und bleibt während des Besuchs gleich. Auch nach Level 10 gibt es alle fünf Level einen weiteren Platz. Wenn der Itempool zu klein ist, bleiben Plätze leer: Mindestens ein wechselndes Item bleibt immer außerhalb des Sortiments.</p>';
+  }).join('') + (MERCHANT_ENABLED
+    ? '<p class="hint">Item-Freischaltungen erweitern den möglichen Angebots- und Belohnungspool, nicht automatisch dein Inventar oder das Shop-Sortiment. Vier schwächste Basis-Items sind immer im Shop. Alle fünf Level kommt ein zufälliger Angebotsplatz dazu. Die Auswahl wird pro Händlerbesuch neu gezogen und bleibt während des Besuchs gleich. Auch nach Level 10 gibt es alle fünf Level einen weiteren Platz. Wenn der Itempool zu klein ist, bleiben Plätze leer: Mindestens ein wechselndes Item bleibt immer außerhalb des Sortiments.</p>'
+    : '<p class="hint">Item-Freischaltungen und bestellbare Itemtypen sind getrennt. Nicht jedes Item kann bestellt werden; Belohnungen und Werkstatt bleiben wichtig. Eine Bestellung belegt einen Platz für einen Itemtyp, unabhängig von der Menge. Jede Lieferung dauert 30 Minuten und landet automatisch im Inventar, auch offline. Der Händler ist vorerst deaktiviert.</p>');
 }
 
 let nextId = 1;
@@ -245,16 +265,17 @@ const state = {
   shopping: false, shopOffers: [], completed: 0, debt: 0, showingResult: false,
   streak: 0, claimedCheckpoints: [], pendingDiscounts: [], activeDiscount: null,
   materials: { wood: 0, iron: 0, cloth: 0 }, crafts: [],
+  orders: [],
 };
 
 const SAVE_KEY = 'lootboxPacker.save';
-const SAVE_VERSION = 2;
+const SAVE_VERSION = 3;
 let lastUpdatedAt = Date.now();
 let savingBlocked = false;
 let storageError = '';
 
 function showSaveStatus(message, error = false) {
-  for (const id of ['saveStatus', 'orderSaveStatus', 'shopSaveStatus', 'workshopSaveStatus']) {
+  for (const id of ['saveStatus', 'orderSaveStatus', 'shopSaveStatus', 'workshopSaveStatus', 'supplySaveStatus']) {
     if ($(id).textContent !== message) $(id).textContent = message;
     $(id).classList.toggle('error', error);
   }
@@ -292,7 +313,7 @@ function decodeSave(data) {
   const require = condition => { if (!condition) throw new Error('Ungültiger oder inkompatibler Spielstand.'); };
   const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
   const count = value => Number.isSafeInteger(value) && value >= 0;
-  require(record(data) && [1, SAVE_VERSION].includes(data.version) && count(data.savedAt) && record(data.state));
+  require(record(data) && [1, 2, SAVE_VERSION].includes(data.version) && count(data.savedAt) && record(data.state));
   const saved = data.state;
   for (const key of ['gold', 'exp', 'debt', 'streak', 'completed']) require(count(saved[key]));
   require(saved.completed < MERCHANT_INTERVAL && typeof saved.shopping === 'boolean');
@@ -369,9 +390,14 @@ function decodeSave(data) {
   require(Array.isArray(crafts) && crafts.length <= workshopCapacity(level));
   require(crafts.every(craft => record(craft) && RECIPES.some(recipe => recipe.item === craft.item && recipe.level <= level)
     && count(craft.finishAt)));
+  const orders = data.version < 3 ? [] : saved.orders;
+  require(Array.isArray(orders) && orders.length <= orderCapacity(level));
+  require(orders.every(order => record(order) && canOrder(itemFor(order.item), level)
+    && count(order.quantity) && order.quantity > 0 && order.quantity <= orderQuantityLimit(level) && count(order.finishAt)));
   return { gold: saved.gold, exp: saved.exp, debt: saved.debt, streak: saved.streak, completed: saved.completed,
     spawnT: saved.spawnT, shopping: saved.shopping, showingResult: false, inventory, cart, boxType, box, active, queue,
-    shopOffers, claimedCheckpoints, pendingDiscounts, activeDiscount, materials: { ...materials }, crafts: crafts.map(craft => ({ ...craft })) };
+    shopOffers, claimedCheckpoints, pendingDiscounts, activeDiscount, materials: { ...materials }, crafts: crafts.map(craft => ({ ...craft })),
+    orders: orders.map(order => ({ item: order.item, quantity: order.quantity, finishAt: order.finishAt })) };
 }
 
 function loadGame() {
@@ -380,6 +406,14 @@ function loadGame() {
     if (raw === null) return false;
     const data = JSON.parse(raw);
     const restored = decodeSave(data);
+    if (!MERCHANT_ENABLED) {
+      if (restored.activeDiscount !== null) restored.pendingDiscounts.unshift(restored.activeDiscount);
+      restored.activeDiscount = null;
+      restored.shopping = false;
+      restored.shopOffers = [];
+      restored.cart = {};
+      restored.completed = 0;
+    }
     Object.assign(state, restored);
     nextId = Math.max(0, ...state.queue.map(customer => customer.id), state.active?.id || 0) + 1;
     lastUpdatedAt = data.savedAt;
@@ -395,6 +429,14 @@ function loadGame() {
 function syncTime(now = Date.now()) {
   const elapsed = Math.max(0, now - lastUpdatedAt) / 1000;
   lastUpdatedAt = Math.max(now, lastUpdatedAt);
+  const delivered = state.orders.filter(order => order.finishAt <= lastUpdatedAt);
+  for (const order of delivered) state.inventory[order.item] = (state.inventory[order.item] || 0) + order.quantity;
+  state.orders = state.orders.filter(order => order.finishAt > lastUpdatedAt);
+  if (delivered.length) {
+    $('supplyMessage').classList.remove('error');
+    $('supplyMessage').textContent = `Angekommen: ${delivered.map(order => `${order.quantity}× ${ITEMS.find(item => item.id === order.item).name}`).join(', ')}.`;
+    renderInventory();
+  }
   tick(elapsed);
 }
 
@@ -420,6 +462,11 @@ function changeStreak(points) {
 }
 
 function checkpointStatus(checkpoint) {
+  if (!MERCHANT_ENABLED) {
+    if (state.pendingDiscounts.includes(checkpoint.points)) return 'Für eine kommende Bestellung vorgemerkt';
+    if (state.claimedCheckpoints.includes(checkpoint.points)) return checkpoint.discount ? 'Für eine Bestellung verwendet' : 'Erhalten';
+    return 'Noch nicht erreicht';
+  }
   if (state.activeDiscount === checkpoint.points) return 'Für diesen Händlerbesuch aktiv';
   if (state.pendingDiscounts.includes(checkpoint.points)) return 'Für kommenden Händlerbesuch vorgemerkt';
   if (state.claimedCheckpoints.includes(checkpoint.points)) return checkpoint.discount ? 'Händlerbesuch beendet' : 'Erhalten';
@@ -517,6 +564,7 @@ const cartSubtotal = () => ITEMS.reduce((sum, item) => sum + shopPrice(item) * (
 const cartTotal = () => Math.ceil(cartSubtotal() * (100 - discountPercent()) / 100);
 
 function addToCart(id) {
+  if (!MERCHANT_ENABLED) return;
   const it = ITEMS.find(i => i.id === id);
   if (!state.shopping || !it || !shopItems().includes(it)) return;
   const restoreFocus = document.activeElement?.closest('#shop .shop-row')?.querySelector('.add-item')?.dataset.id === id;
@@ -540,6 +588,7 @@ function removeFromCart(id) {
 }
 
 function checkout() {
+  if (!MERCHANT_ENABLED) return;
   if (!state.shopping || cartQuantity() === 0 || cartTotal() > state.gold) return;
   if (Object.keys(state.cart).some(id => !shopItems().some(item => item.id === id))) {
     $('checkoutMessage').textContent = 'Der Warenkorb enthält gesperrte oder bei diesem Besuch nicht angebotene Items.';
@@ -674,9 +723,10 @@ function send() {
   state.box = [];
   state.boxType = null;
   state.active = null;
-  state.completed++;
+  if (MERCHANT_ENABLED) state.completed++;
   state.showingResult = true;
-  if (state.completed === MERCHANT_INTERVAL) {
+  // Alter Händlerzyklus bleibt für später erhalten.
+  if (MERCHANT_ENABLED && state.completed === MERCHANT_INTERVAL) {
     state.completed = 0;
     state.shopping = true;
     state.shopOffers = rollShopOffers();
@@ -786,6 +836,7 @@ function render() {
   $('exp').textContent = `${progress.current}/${progress.required}`;
   $('levelProgress').max = progress.required;
   $('levelProgress').value = progress.current;
+  $('merchantPanel').hidden = !MERCHANT_ENABLED;
   $('merchantStatus').textContent = state.shopping ? 'Händler da · Kunden warten unbegrenzt' : `Händler in ${MERCHANT_INTERVAL - state.completed} Aufträgen`;
   $('merchantProgress').value = state.shopping ? MERCHANT_INTERVAL : state.completed;
   $('debtInfo').textContent = state.debt ? `Offener Vorschuss: ${state.debt} Gold` : '';
@@ -806,7 +857,7 @@ function render() {
     : $('checkoutMessage').textContent;
   $('shopHint').textContent = state.shopping
     ? `${state.shopOffers.length} Angebote: 4 feste Basis-Items und ${Math.max(0, state.shopOffers.length - SHOP_BASE_IDS.length)} zufällige Extras. Nächster Angebotsplatz: Level ${(Math.floor(progress.level / SHOP_SLOT_INTERVAL) + 1) * SHOP_SLOT_INTERVAL}. Auswahl bleibt für diesen Besuch gleich. Händlerpreise: +25 %, auf ganze Gold aufgerundet; Serienrabatt gilt danach. Jeder Kauf landet im Inventar.`
-    : 'Der Händler kommt nach fünf abgeschlossenen Aufträgen wieder. Nutze bis dahin dein Inventar oder den Notfall-Restock.';
+    : 'Der Händler ist vorerst deaktiviert. Nutze Bestellungen im Inventar, die Werkstatt oder den Notfall-Restock.';
   $('restock').disabled = state.shopping || state.showingResult || (state.debt > 0 && state.gold < RESTOCK_COST);
   $('restock').textContent = `Notfall-Restock · ${RESTOCK_COST} Gold`;
   $('restockHint').textContent = `${RESTOCK_SIZE} zufällige Basis-Items: kleiner Heiltrank, Kurzschwert, Holzschild oder Zauberstab. Mindestens zwei Attribute. Fehlendes Gold wird als Vorschuss mit künftigen Goldbelohnungen verrechnet. ${state.debt ? 'Kein weiterer Vorschuss, bis die offene Gebühr bezahlt ist.' : ''}`;
@@ -866,12 +917,13 @@ function render() {
     : '<div class="empty">Der Warenkorb ist leer.</div>';
   $('cart').querySelectorAll('.remove-item').forEach(el => el.onclick = () => removeFromCart(el.dataset.id));
   const shopDialog = $('shopDialog');
-  if (state.shopping && !state.showingResult && !shopDialog.open) shopDialog.showModal();
+  if (MERCHANT_ENABLED && state.shopping && !state.showingResult && !shopDialog.open) shopDialog.showModal();
   else if ((!state.shopping || state.showingResult) && shopDialog.open) shopDialog.close();
   renderInventory();
   renderPicker();
   renderQueue();
   renderWorkshop();
+  renderSupply();
   const orderDialog = $('orderDialog');
   $('boxSelection').hidden = !c || !!state.boxType;
   $('packingView').hidden = !c || !state.boxType;
@@ -894,7 +946,7 @@ function renderInventory() {
           <span class="cost">×${state.inventory[it.id]}</span>
         </button>`;
       }).join('')
-    : `<div class="empty">${state.shopping ? 'Dein Lager ist leer. Kaufe Vorräte im Shop.' : 'Dein Lager ist leer. Nutze den Notfall-Restock.'}</div>`;
+    : `<div class="empty">${state.shopping ? 'Dein Lager ist leer. Kaufe Vorräte im Shop.' : 'Dein Lager ist leer. Bestelle Nachschub im Inventar-Menü oder nutze den Notfall-Restock.'}</div>`;
   $('inventory').querySelectorAll('.shop-item').forEach(el => el.onclick = () => packItem(el.dataset.id));
 }
 
@@ -976,7 +1028,94 @@ function openWorkshop() {
   renderWorkshop();
 }
 
+const orderDrafts = {};
+
+function placeOrder(id, quantity) {
+  syncTime();
+  const item = ITEMS.find(entry => entry.id === id);
+  let error = '';
+  if (!item || !canOrder(item)) error = 'Dieses Item ist noch nicht bestellbar.';
+  else if (!Number.isInteger(quantity) || quantity < 1 || quantity > orderQuantityLimit()) error = `Wähle eine ganze Menge von 1 bis ${orderQuantityLimit()}.`;
+  else if (state.orders.length >= orderCapacity()) error = 'Alle Bestellplätze sind belegt. Warte auf eine Lieferung.';
+  else if (state.gold < orderPrice(item, quantity)) error = 'Nicht genug Gold für diese Bestellung.';
+  if (error) {
+    $('supplyMessage').textContent = error;
+    $('supplyMessage').classList.add('error');
+    renderSupply();
+    return;
+  }
+  const price = orderPrice(item, quantity);
+  const discount = orderDiscount();
+  state.gold -= price;
+  if (discount) state.pendingDiscounts.shift();
+  state.orders.push({ item: id, quantity, finishAt: lastUpdatedAt + ORDER_DURATION });
+  $('supplyMessage').classList.remove('error');
+  $('supplyMessage').textContent = `${quantity}× ${item.name} für ${price} Gold bestellt${discount ? ` (${discount} % Rabatt)` : ''}. Lieferung in 30 Minuten.`;
+  sfx.play('checkout');
+  render();
+}
+
+function renderDeliveries() {
+  $('supplySummary').textContent = `${state.orders.length}/${orderCapacity()} Bestellplätze belegt · bis zu ${orderQuantityLimit()} Stück je Bestellung`;
+  $('deliverySlots').innerHTML = Array.from({ length: orderCapacity() }, (_, i) => {
+    const order = state.orders[i];
+    if (!order) return '<div class="workshop-row">Bestellplatz frei</div>';
+    const item = ITEMS.find(entry => entry.id === order.item);
+    const minutes = Math.ceil(Math.max(0, order.finishAt - lastUpdatedAt) / 60000);
+    return `<div class="workshop-row"><span>${item.icon} ${order.quantity}× ${item.name}<small>Lieferung in ${minutes} Min. · danach automatisch im Inventar</small></span></div>`;
+  }).join('');
+}
+
+function renderSupply() {
+  renderDeliveries();
+  if (!$('supplyDialog').open) return;
+  $('supplyGold').textContent = state.gold;
+  const discount = orderDiscount();
+  $('supplyDiscount').textContent = discount
+    ? `${discount} % Rabatt auf deine nächste Bestellung (gesamte Menge). Weitere Rabatte folgen einzeln.`
+    : 'Kein Bestellrabatt vorgemerkt.';
+  $('supplyInventory').innerHTML = ITEMS.map(item => {
+    const catalog = ORDER_CATALOG.find(entry => entry.item === item.id);
+    const available = canOrder(item);
+    const quantity = orderDrafts[item.id] ?? 1;
+    const price = orderPrice(item, quantity);
+    return `<div class="supply-row item-rarity-${item.rarity}">
+      <div class="supply-item"><span>${item.icon} ${itemNameHtml(item)}</span><b>Vorrat: ${state.inventory[item.id] || 0}</b></div>
+      <small>${itemDetailsHtml(item)}${isUnlocked(item) ? '' : ` · Item ab Level ${item.level}`}</small>
+      ${available ? `<div class="supply-controls">
+        <label>Menge <input type="number" inputmode="numeric" min="1" max="${orderQuantityLimit()}" step="1" value="${quantity}" data-quantity="${item.id}" aria-label="Bestellmenge ${item.name}"></label>
+        <button class="secondary order-item" data-item="${item.id}" ${state.orders.length >= orderCapacity() || price > state.gold ? 'disabled' : ''}>Bestellen · ${price} Gold</button></div>`
+      : `<small>${catalog ? `Bestellbar ab Level ${catalog.level}` : 'Nicht bestellbar · Kundenbelohnungen oder Werkstatt'}</small>`}
+    </div>`;
+  }).join('');
+  $('supplyInventory').querySelectorAll('[data-quantity]').forEach(input => {
+    input.oninput = () => {
+      const quantity = input.valueAsNumber;
+      const item = ITEMS.find(item => item.id === input.dataset.quantity);
+      const valid = Number.isInteger(quantity) && quantity >= 1 && quantity <= orderQuantityLimit();
+      if (valid) orderDrafts[item.id] = quantity;
+      const button = $('supplyInventory').querySelector(`[data-item="${item.id}"]`);
+      button.textContent = valid ? `Bestellen · ${orderPrice(item, quantity)} Gold` : 'Ungültige Menge';
+      button.disabled = !valid || state.orders.length >= orderCapacity() || orderPrice(item, quantity) > state.gold;
+    };
+  });
+  $('supplyInventory').querySelectorAll('.order-item').forEach(button => {
+    button.onclick = () => placeOrder(button.dataset.item, orderDrafts[button.dataset.item] ?? 1);
+  });
+}
+
+function openSupply() {
+  if (state.showingResult) return;
+  syncTime();
+  $('supplyDialog').showModal();
+  renderSupply();
+  saveGame();
+}
+
 $('send').onclick = send;
+$('openSupply').onclick = openSupply;
+$('packingSupply').onclick = openSupply;
+$('closeSupply').onclick = () => $('supplyDialog').close();
 $('openWorkshop').onclick = openWorkshop;
 $('closeWorkshop').onclick = () => $('workshopDialog').close();
 $('backToBoxes').onclick = backToBoxes;
@@ -1006,6 +1145,7 @@ render();
 document.addEventListener('visibilitychange', () => {
   syncTime();
   renderWorkshop();
+  renderSupply();
   saveGame();
 });
 window.addEventListener('pagehide', () => {
@@ -1018,7 +1158,9 @@ window.addEventListener('storage', event => {
   showSaveStatus('Spielstand in einem anderen Tab geändert. Lade diese Seite neu; dieser Tab speichert nicht mehr.', true);
 });
 setInterval(() => {
+  const ordersBefore = state.orders.length;
   syncTime();
+  if (ordersBefore !== state.orders.length) renderSupply(); else renderDeliveries();
   if ($('workshopDialog').open && !document.hidden) {
     const focused = document.activeElement;
     const selector = focused?.classList.contains('start-craft') ? `.start-craft[data-item="${focused.dataset.item}"]`

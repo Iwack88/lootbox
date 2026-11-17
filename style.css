@@ -10,6 +10,18 @@ header { display: flex; justify-content: space-between; font-size: 18px; }
 .workshop-row small { display: block; }
 .workshop-row button { flex-shrink: 0; }
 .workshop-row button:disabled, #openWorkshop:disabled { opacity: .45; }
+.supply-row { padding: 12px; background: #34325c; border-radius: 10px; border-left: 3px solid var(--item-color); }
+.supply-row small { display: block; font-size: 12px; }
+.supply-item { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; margin-bottom: 6px; }
+.supply-item span { min-width: 0; overflow-wrap: anywhere; }
+.supply-item b { font-size: 13px; white-space: nowrap; }
+.supply-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+.supply-controls label { font-size: 13px; }
+.supply-controls input { width: 64px; padding: 8px; border: 1px solid #6c63ff; border-radius: 6px; background: #15142a; color: #eee; font: inherit; }
+.supply-controls button:disabled { opacity: .45; }
+#supplyDiscount { color: #ffd166; }
+#packingSupply { margin-bottom: 10px; }
+[hidden] { display: none !important; }
 .order-dialog { width: min(1200px, calc(100% - 24px)); max-width: none; max-height: calc(100dvh - 24px); padding: 16px; border: 1px solid #6c63ff; border-radius: 16px; background: #1b1a2e; color: #eee; overflow-y: auto; overscroll-behavior: contain; }
 .order-dialog::backdrop { background: rgba(10, 9, 25, .9); }
 .order-heading { position: sticky; top: -16px; z-index: 2; display: flex; align-items: center; gap: 12px; background: #1b1a2e; padding: 8px 0 12px; }
