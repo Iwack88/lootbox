@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1b1a2e">
 <meta http-equiv="Cache-Control" content="no-cache">
 <title>Lootbox Packer</title>
-<link rel="stylesheet" href="style.css?v=25">
+<link rel="stylesheet" href="style.css?v=26">
 </head>
 <body>
 <header>
@@ -155,7 +155,9 @@
   <p id="supplyMessage" class="hint" role="status"></p>
   <h3>Unterwegs</h3>
   <div id="deliverySlots" class="shop"></div>
-  <h3>Alle Items &amp; Vorrat</h3>
+  <h3>Items &amp; Vorrat</h3>
+  <label class="availability-filter"><input id="hideUnavailable" type="checkbox" checked> Nicht verfügbare Items ausblenden</label>
+  <p class="hint">Zeigt nur bestellbare Items oder Items mit Vorrat.</p>
   <div id="supplyInventory" class="shop"></div>
 </dialog>
 
@@ -193,7 +195,7 @@
 </dialog>
 
 <div id="result" class="overlay hidden"></div>
-<script src="sound.js?v=25"></script>
-<script src="game.js?v=25"></script>
+<script src="sound.js?v=26"></script>
+<script src="game.js?v=26"></script>
 </body>
 </html>

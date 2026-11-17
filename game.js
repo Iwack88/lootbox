@@ -1088,7 +1088,8 @@ function renderSupply() {
   $('supplyDiscount').textContent = discount
     ? `${discount} % Rabatt auf deine nächste Bestellung (gesamte Menge). Weitere Rabatte folgen einzeln.`
     : 'Kein Bestellrabatt vorgemerkt.';
-  $('supplyInventory').innerHTML = ITEMS.map(item => {
+  const visibleItems = ITEMS.filter(item => !$('hideUnavailable').checked || canOrder(item) || state.inventory[item.id] > 0);
+  $('supplyInventory').innerHTML = visibleItems.map(item => {
     const catalog = ORDER_CATALOG.find(entry => entry.item === item.id);
     const available = canOrder(item);
     const quantity = orderDrafts[item.id] ?? 1;
@@ -1129,6 +1130,8 @@ $('send').onclick = send;
 $('openSupply').onclick = openSupply;
 $('packingSupply').onclick = openSupply;
 $('closeSupply').onclick = () => $('supplyDialog').close();
+$('hideUnavailable').checked = true;
+$('hideUnavailable').onchange = renderSupply;
 $('openWorkshop').onclick = openWorkshop;
 $('closeWorkshop').onclick = () => $('workshopDialog').close();
 $('backToBoxes').onclick = backToBoxes;

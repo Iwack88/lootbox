@@ -114,6 +114,24 @@ function createOrderingGame(options = {}) {
   return createGame({ ...options, legacyMerchant: false });
 }
 
+test('availability filter defaults on, keeps orderable or stocked items and can reveal the full catalog', () => {
+  const run = createOrderingGame();
+  run('state.inventory = {runeblade: 1}; openSupply()');
+  assert.equal(run("$('hideUnavailable').checked"), true);
+  assert.match(run("$('supplyInventory').innerHTML"), /Runenklinge/);
+  assert.match(run("$('supplyInventory').innerHTML"), /Verband/);
+  assert.doesNotMatch(run("$('supplyInventory').innerHTML"), /Plattenrüstung/);
+  assert.equal((run("$('supplyInventory').innerHTML").match(/Vorrat:/g) || []).length, 5);
+  run("$('hideUnavailable').checked = false; $('hideUnavailable').onchange()");
+  assert.equal((run("$('supplyInventory').innerHTML").match(/Vorrat:/g) || []).length, run('ITEMS.length'));
+  run("$('hideUnavailable').checked = true; state.inventory.runeblade = 0; $('hideUnavailable').onchange()");
+  assert.doesNotMatch(run("$('supplyInventory').innerHTML"), /Runenklinge/);
+  run('state.exp = expForLevel(4); renderSupply()');
+  assert.match(run("$('supplyInventory').innerHTML"), /Kleiner Heiltrank/);
+  run('state.gold = 0; state.orders = [{item:"bandage", quantity:1, finishAt:lastUpdatedAt + ORDER_DURATION}, {item:"dag", quantity:1, finishAt:lastUpdatedAt + ORDER_DURATION}]; renderSupply()');
+  assert.match(run("$('supplyInventory').innerHTML"), /Verband/);
+});
+
 test('quantity buttons clamp to level limits and update the order price and affordability', () => {
   const run = createOrderingGame();
   run(`globalThis.quantityElements = {};
@@ -153,7 +171,8 @@ test('one order slot holds a chosen quantity of one item and prices scale per pi
   assert.equal(run('state.orders[0].finishAt - lastUpdatedAt'), 30 * 60000);
   assert.match(run("$('deliverySlots').innerHTML"), /2× Verband/);
   assert.match(run("$('supplySummary').textContent"), /1\/2 Bestellplätze/);
-  assert.equal((run("$('supplyInventory').innerHTML").match(/Vorrat:/g) || []).length, run('ITEMS.length'));
+  assert.equal((run("$('supplyInventory').innerHTML").match(/Vorrat:/g) || []).length,
+    run('ITEMS.filter(item => canOrder(item) || state.inventory[item.id] > 0).length'));
   run("placeOrder('dag', 5); placeOrder('sparkStone', 1)");
   assert.equal(run('state.orders.length'), 2);
   assert.equal(run('state.gold'), 454);

@@ -22,6 +22,8 @@ header { display: flex; justify-content: space-between; font-size: 18px; }
 .supply-controls button:disabled { opacity: .45; }
 #supplyDiscount { color: #ffd166; }
 #packingSupply { margin-bottom: 10px; }
+.availability-filter { display: flex; align-items: center; gap: 8px; min-height: 44px; font-size: 14px; cursor: pointer; }
+.availability-filter input { width: 20px; height: 20px; accent-color: #ffd166; flex-shrink: 0; }
 [hidden] { display: none !important; }
 .order-dialog { width: min(1200px, calc(100% - 24px)); max-width: none; max-height: calc(100dvh - 24px); padding: 16px; border: 1px solid #6c63ff; border-radius: 16px; background: #1b1a2e; color: #eee; overflow-y: auto; overscroll-behavior: contain; }
 .order-dialog::backdrop { background: rgba(10, 9, 25, .9); }
