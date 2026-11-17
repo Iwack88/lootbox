@@ -1,4 +1,6 @@
 const $ = id => document.getElementById(id);
+// Die frühere Erfolgsserie bleibt deaktiviert erhalten.
+const STREAK_ENABLED = false;
 const ATTRS = {
   hp:    { name: 'Leben',    icon: '❤️' },
   melee: { name: 'Nahkampf', icon: '⚔️' },
@@ -136,7 +138,8 @@ const MATERIALS = {
   iron: { name: 'Eisen', icon: '⛓️' },
   cloth: { name: 'Stoff', icon: '🧵' },
 };
-const WORKSHOP_LEVEL = 3;
+const WORKSHOP_LEVEL = STREAK_ENABLED ? 3 : 4;
+const WORKSHOP_SPEED_LEVEL = STREAK_ENABLED ? 7 : 14;
 const WORKSHOP_SLOTS = [{ level: 3, count: 1 }, { level: 6, count: 2 }, { level: 10, count: 3 }];
 const RECIPES = [
   { item: 'bandage', level: 3, materials: { cloth: 2 }, minutes: 15 },
@@ -162,6 +165,39 @@ const CHECKPOINTS = [
   { points: 25, icon: '🏷️', title: '15 % Rabatt', description: MERCHANT_ENABLED ? '15 % Rabatt während eines weiteren Händlerbesuchs. Vorgemerkte Rabatte werden nacheinander genutzt, nicht addiert.' : '15 % Rabatt auf eine weitere Bestellung. Rabatte werden nacheinander genutzt, nicht addiert.', discount: 15 },
 ];
 
+// Freischaltungen des ursprünglichen Kurzfortschritts auf 25 Level verteilen.
+if (!STREAK_ENABLED) {
+  for (const item of ITEMS) item.level = ({ 1: 1, 2: 3, 3: 7, 4: 12, 5: 18 })[item.level];
+  BOXES.find(box => box.id === 'medium').level = 7;
+  BOXES.find(box => box.id === 'magic').level = 12;
+  BOXES.push(
+    { id: 'large', name: 'Große Kiste', icon: '📦', slots: 6, level: 16, modifiers: {} },
+    { id: 'expedition', name: 'Expeditionskiste', icon: '🧰', slots: 8, level: 24, modifiers: {} },
+  );
+  CUSTOMER_PLACES[1].level = 9;
+  CUSTOMER_PLACES[2].level = 19;
+  for (const tier of CUSTOMER_TIERS) tier.level = ({ wannabe: 1, adventurer: 5, hero: 18, demigod: 25 })[tier.id];
+  for (const entry of WORKSHOP_SLOTS) entry.level = ({ 3: 4, 6: 13, 10: 23 })[entry.level];
+  for (const recipe of RECIPES) recipe.level = ({ 3: 4, 4: 9, 5: 14 })[recipe.level];
+  for (const entry of ORDER_SLOTS) entry.level = ({ 1: 1, 5: 10, 10: 20 })[entry.level];
+  ORDER_QUANTITIES[1].level = 16;
+  for (const entry of ORDER_CATALOG) entry.level = ({ 1: 1, 4: 6, 5: 8, 6: 11, 8: 15, 10: 21 })[entry.level];
+}
+
+const LEVEL_REWARDS = [
+  { level: 2, items: { bandage: 3, leatherCap: 3, sparkStone: 3 } },
+  { level: 6, items: { pot1: 3 } },
+  { level: 8, discount: 10 },
+  { level: 11, items: { shield: 2, wand: 2 } },
+  { level: 15, discount: 10 },
+  { level: 17, items: { pot2: 3, ironSword: 3 } },
+  { level: 20, discount: 15 },
+  { level: 22, items: { righteousShield: 1, runeblade: 1 } },
+  { level: 24, discount: 15 },
+  { level: 25, items: { pot3: 2, warhammer: 1 }, discount: 20 },
+];
+const LAST_MILESTONE = 25;
+
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 
 const expForLevel = level => 50 * level * (level - 1);
@@ -176,11 +212,11 @@ const isUnlocked = entry => progression().level >= entry.level;
 
 const queueCapacity = () => CUSTOMER_PLACES.filter(isUnlocked).at(-1).count;
 const workshopCapacity = (level = progression().level) => WORKSHOP_SLOTS.filter(entry => entry.level <= level).at(-1)?.count || 0;
-const craftDuration = (recipe, level = progression().level) => recipe.minutes * 60 * 1000 * (level >= 7 ? 0.8 : 1);
+const craftDuration = (recipe, level = progression().level) => recipe.minutes * 60 * 1000 * (level >= WORKSHOP_SPEED_LEVEL ? 0.8 : 1);
 const orderCapacity = (level = progression().level) => ORDER_SLOTS.filter(entry => entry.level <= level).at(-1).count;
 const orderQuantityLimit = (level = progression().level) => ORDER_QUANTITIES.filter(entry => entry.level <= level).at(-1).count;
 const canOrder = (item, level = progression().level) => item.level <= level && ORDER_CATALOG.some(entry => entry.item === item.id && entry.level <= level);
-const orderDiscount = () => CHECKPOINTS.find(entry => entry.points === state.pendingDiscounts[0])?.discount || 0;
+const orderDiscount = () => CHECKPOINTS.find(entry => entry.points === state.pendingDiscounts[0])?.discount || state.levelDiscounts[0] || 0;
 const orderPrice = (item, quantity) => Math.ceil(shopPrice(item) * quantity * (100 - orderDiscount()) / 100);
 
 const shopCapacity = (level = progression().level) => SHOP_BASE_IDS.length + Math.floor(level / SHOP_SLOT_INTERVAL);
@@ -210,29 +246,53 @@ function unlocksAtLevel(level) {
       const item = ITEMS.find(entry => entry.id === recipe.item);
       return `Rezept: ${item.icon} ${item.name}`;
     }),
-    ...(level === 7 ? ['Werkstatt: 20 % schnellere neue Herstellungsaufträge'] : []),
+    ...(level === WORKSHOP_SPEED_LEVEL ? ['Werkstatt: 20 % schnellere neue Herstellungsaufträge'] : []),
     ...(MERCHANT_ENABLED && level === 1 ? ['Shop: 4 feste Basis-Angebote – Verband, Kurzschwert, Lederkappe und Funkenstein'] : []),
     ...(MERCHANT_ENABLED && level % SHOP_SLOT_INTERVAL === 0 ? [`Shop: +1 zufälliger Angebotsplatz (${shopCapacity(level)} Plätze insgesamt) ab dem nächsten Händlerbesuch`] : []),
     ...(!MERCHANT_ENABLED ? ORDER_SLOTS.filter(entry => entry.level === level).map(entry => `Bestellungen: ${entry.count} parallele Plätze`) : []),
     ...(!MERCHANT_ENABLED ? ORDER_QUANTITIES.filter(entry => entry.level === level).map(entry => `Bestellmenge: bis zu ${entry.count} Stück pro Bestellung`) : []),
     ...(!MERCHANT_ENABLED ? ORDER_CATALOG.filter(entry => entry.level === level).map(entry => `Bestellbar: ${ITEMS.find(item => item.id === entry.item).name}`) : []),
+    ...(!STREAK_ENABLED ? levelRewardDescriptions(level) : []),
   ];
 }
 
-function renderRoadmap() {
+function levelRewardDescriptions(level) {
+  const reward = LEVEL_REWARDS.find(reward => reward.level === level);
+  if (!reward) return [];
+  return [
+    ...(reward.items ? [`Itempaket: ${Object.entries(reward.items).map(([id, count]) => `${count}× ${ITEMS.find(item => item.id === id).name}`).join(', ')}`] : []),
+    ...(reward.discount ? [`${reward.discount} % Rabatt auf eine Bestellung (gesamte Menge)`] : []),
+  ];
+}
+
+function grantLevelRewards(previousLevel, newLevel) {
+  const bonuses = [];
+  for (const reward of LEVEL_REWARDS) {
+    if (reward.level <= previousLevel || reward.level > newLevel || state.claimedLevelRewards.includes(reward.level)) continue;
+    state.claimedLevelRewards.push(reward.level);
+    for (const [id, quantity] of Object.entries(reward.items || {})) {
+      state.inventory[id] = (state.inventory[id] || 0) + quantity;
+    }
+    if (reward.discount) state.levelDiscounts.push(reward.discount);
+    bonuses.push(...levelRewardDescriptions(reward.level).map(text => `Level ${reward.level}: ${text} erhalten.`));
+  }
+  return bonuses;
+}
+
+function renderRoadmap(selected = null) {
   const { level } = progression();
-  const lastMilestone = Math.max(10, (Math.floor(level / SHOP_SLOT_INTERVAL) + 1) * SHOP_SLOT_INTERVAL,
-    ...[...ITEMS, ...BOXES, ...CUSTOMER_TIERS, ...CUSTOMER_PLACES].map(entry => entry.level));
+  const lastMilestone = STREAK_ENABLED ? Math.max(10, (Math.floor(level / SHOP_SLOT_INTERVAL) + 1) * SHOP_SLOT_INTERVAL,
+    ...[...ITEMS, ...BOXES, ...CUSTOMER_TIERS, ...CUSTOMER_PLACES].map(entry => entry.level)) : LAST_MILESTONE;
   $('roadmap').innerHTML = Array.from({ length: lastMilestone }, (_, i) => {
     const milestone = i + 1;
-    return `<section class="milestone ${milestone <= level ? 'unlocked' : 'locked'}">
+    return `<section id="level-milestone-${milestone}" tabindex="-1" class="milestone ${milestone <= level ? 'unlocked' : 'locked'}${selected === milestone ? ' selected-checkpoint' : ''}">
       <h3>Level ${milestone} · ${milestone <= level ? 'Freigeschaltet' : 'Gesperrt'}${milestone === level ? ' · Aktuell' : ''}</h3>
       <small>${expForLevel(milestone)} Gesamt-EXP${milestone > 1 ? ` · ${100 * (milestone - 1)} EXP ab Level ${milestone - 1}` : ''}</small>
       <ul>${unlocksAtLevel(milestone).map(unlock => `<li>${unlock}</li>`).join('')}</ul>
     </section>`;
   }).join('') + (MERCHANT_ENABLED
     ? '<p class="hint">Item-Freischaltungen erweitern den möglichen Angebots- und Belohnungspool, nicht automatisch dein Inventar oder das Shop-Sortiment. Vier schwächste Basis-Items sind immer im Shop. Alle fünf Level kommt ein zufälliger Angebotsplatz dazu. Die Auswahl wird pro Händlerbesuch neu gezogen und bleibt während des Besuchs gleich. Auch nach Level 10 gibt es alle fünf Level einen weiteren Platz. Wenn der Itempool zu klein ist, bleiben Plätze leer: Mindestens ein wechselndes Item bleibt immer außerhalb des Sortiments.</p>'
-    : '<p class="hint">Item-Freischaltungen und bestellbare Itemtypen sind getrennt. Nicht jedes Item kann bestellt werden; Belohnungen und Werkstatt bleiben wichtig. Eine Bestellung belegt einen Platz für einen Itemtyp, unabhängig von der Menge. Jede Lieferung dauert 30 Minuten und landet automatisch im Inventar, auch offline. Der Händler ist vorerst deaktiviert.</p>');
+    : '<p class="hint">Meilensteine sind bis Level 25 geplant. Weitere Level sind möglich, danach vorerst ohne neue Freischaltungen. Itempakete werden beim Levelaufstieg automatisch ins Inventar gelegt; Rabatte gelten einmal pro Bestellung. Item-Freischaltungen und bestellbare Itemtypen sind getrennt. Nicht jedes Item kann bestellt werden; Belohnungen und Werkstatt bleiben wichtig. Eine Bestellung belegt einen Platz für einen Itemtyp, unabhängig von der Menge. Jede Lieferung dauert 30 Minuten und landet automatisch im Inventar, auch offline. Der Händler ist vorerst deaktiviert.</p>');
 }
 
 let nextId = 1;
@@ -266,10 +326,11 @@ const state = {
   streak: 0, claimedCheckpoints: [], pendingDiscounts: [], activeDiscount: null,
   materials: { wood: 0, iron: 0, cloth: 0 }, crafts: [],
   orders: [],
+  claimedLevelRewards: [], levelDiscounts: [],
 };
 
 const SAVE_KEY = 'lootboxPacker.save';
-const SAVE_VERSION = 3;
+const SAVE_VERSION = 4;
 let lastUpdatedAt = Date.now();
 let savingBlocked = false;
 let storageError = '';
@@ -313,12 +374,19 @@ function decodeSave(data) {
   const require = condition => { if (!condition) throw new Error('Ungültiger oder inkompatibler Spielstand.'); };
   const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
   const count = value => Number.isSafeInteger(value) && value >= 0;
-  require(record(data) && [1, 2, SAVE_VERSION].includes(data.version) && count(data.savedAt) && record(data.state));
+  require(record(data) && [1, 2, 3, SAVE_VERSION].includes(data.version) && count(data.savedAt) && record(data.state));
   const saved = data.state;
   for (const key of ['gold', 'exp', 'debt', 'streak', 'completed']) require(count(saved[key]));
   require(saved.completed < MERCHANT_INTERVAL && typeof saved.shopping === 'boolean');
   require(Number.isFinite(saved.spawnT) && saved.spawnT >= 0 && saved.spawnT <= SPAWN_INTERVAL);
-  const level = progression(saved.exp).level;
+  let totalExp = saved.exp;
+  if (data.version < 4 && !STREAK_ENABLED) {
+    // Frühere Freischaltungen bleiben erhalten; Level und Teilfortschritt werden auf die längere Kurve übertragen.
+    const old = progression(saved.exp);
+    const migratedLevel = ({ 1: 1, 2: 5, 3: 9, 4: 12, 5: 18, 6: 19 })[old.level] || old.level + 18;
+    totalExp = expForLevel(migratedLevel) + Math.floor(old.current / old.required * migratedLevel * 100);
+  }
+  const level = progression(totalExp).level;
   const itemFor = id => {
     const item = ITEMS.find(item => item.id === id && item.level <= level);
     require(!!item);
@@ -394,10 +462,17 @@ function decodeSave(data) {
   require(Array.isArray(orders) && orders.length <= orderCapacity(level));
   require(orders.every(order => record(order) && canOrder(itemFor(order.item), level)
     && count(order.quantity) && order.quantity > 0 && order.quantity <= orderQuantityLimit(level) && count(order.finishAt)));
-  return { gold: saved.gold, exp: saved.exp, debt: saved.debt, streak: saved.streak, completed: saved.completed,
+  const claimedLevelRewards = data.version < 4
+    ? LEVEL_REWARDS.filter(reward => reward.level <= level).map(reward => reward.level) : saved.claimedLevelRewards;
+  const levelDiscounts = data.version < 4 ? [] : saved.levelDiscounts;
+  require(Array.isArray(claimedLevelRewards) && new Set(claimedLevelRewards).size === claimedLevelRewards.length
+    && claimedLevelRewards.every(value => value <= level && LEVEL_REWARDS.some(reward => reward.level === value)));
+  require(Array.isArray(levelDiscounts) && levelDiscounts.every(value => [10, 15, 20].includes(value)));
+  return { gold: saved.gold, exp: totalExp, debt: saved.debt, streak: saved.streak, completed: saved.completed,
     spawnT: saved.spawnT, shopping: saved.shopping, showingResult: false, inventory, cart, boxType, box, active, queue,
     shopOffers, claimedCheckpoints, pendingDiscounts, activeDiscount, materials: { ...materials }, crafts: crafts.map(craft => ({ ...craft })),
-    orders: orders.map(order => ({ item: order.item, quantity: order.quantity, finishAt: order.finishAt })) };
+    orders: orders.map(order => ({ item: order.item, quantity: order.quantity, finishAt: order.finishAt })),
+    claimedLevelRewards: [...claimedLevelRewards], levelDiscounts: [...levelDiscounts] };
 }
 
 function loadGame() {
@@ -415,6 +490,12 @@ function loadGame() {
       restored.completed = 0;
     }
     Object.assign(state, restored);
+    if (data.version < 4 && !STREAK_ENABLED) {
+      const oldLevel = progression(data.state.exp).level;
+      const newLevel = progression(restored.exp).level;
+      $('progressionNotice').textContent = `Dein Spielstand wurde auf die neuen Meilensteine übertragen${newLevel !== oldLevel ? `: Level ${oldLevel} → ${newLevel}` : ''}. Bereits freigeschaltete Inhalte und verdiente Rabatte bleiben erhalten. Frühere Level-Pakete werden nicht nachträglich vergeben.`;
+      $('progressionNotice').hidden = false;
+    }
     nextId = Math.max(0, ...state.queue.map(customer => customer.id), state.active?.id || 0) + 1;
     lastUpdatedAt = data.savedAt;
     syncTime();
@@ -441,6 +522,7 @@ function syncTime(now = Date.now()) {
 }
 
 function changeStreak(points) {
+  if (!STREAK_ENABLED) return [];
   state.streak = Math.max(0, state.streak + points);
   const bonuses = [];
   if (points <= 0) return bonuses;
@@ -474,6 +556,10 @@ function checkpointStatus(checkpoint) {
 }
 
 function renderStreak() {
+  if (!STREAK_ENABLED) {
+    renderLevelTrack();
+    return;
+  }
   $('streakPoints').textContent = state.streak;
   $('streakProgress').max = CHECKPOINTS.at(-1).points;
   $('streakProgress').value = Math.min(state.streak, CHECKPOINTS.at(-1).points);
@@ -495,7 +581,38 @@ function renderStreak() {
   ].filter(Boolean).join(' · ');
 }
 
+function renderLevelTrack() {
+  const progress = progression();
+  const upcoming = Array.from({ length: Math.max(0, Math.min(5, LAST_MILESTONE - progress.level)) }, (_, i) => progress.level + i + 1);
+  $('streakPoints').textContent = progress.level;
+  $('trackStart').textContent = progress.level;
+  $('streakProgress').max = upcoming.length || 1;
+  $('streakProgress').value = upcoming.length ? progress.current / progress.required : 1;
+  $('streakProgress').setAttribute('aria-label', 'Fortschritt zu den nächsten Level-Meilensteinen');
+  $('streakNext').textContent = upcoming.length
+    ? `Nächster Meilenstein: Level ${upcoming[0]} · ${progress.required - progress.current} EXP fehlen`
+    : 'Alle geplanten Meilensteine bis Level 25 erreicht.';
+  $('streakCheckpoints').innerHTML = upcoming.map((level, index) => {
+    const reward = LEVEL_REWARDS.find(reward => reward.level === level);
+    const icon = reward?.items ? '🎁' : reward?.discount ? '🏷️' : '⭐';
+    return `<button class="checkpoint" style="left:${(index + 1) / upcoming.length * 100}%" data-level-milestone="${level}" aria-haspopup="dialog" aria-controls="roadmapDialog" aria-label="Level ${level}: Freischaltungen ansehen">
+      <span>${icon}</span><b>${level}</b></button>`;
+  }).join('');
+  $('streakCheckpoints').querySelectorAll('[data-level-milestone]').forEach(button => {
+    button.onclick = () => openRoadmap(+button.dataset.levelMilestone);
+  });
+  const discounts = [
+    ...state.pendingDiscounts.map(points => CHECKPOINTS.find(checkpoint => checkpoint.points === points).discount),
+    ...state.levelDiscounts,
+  ];
+  $('streakDiscounts').textContent = discounts.length ? `Bestellrabatte vorgemerkt: ${discounts.map(value => `${value} %`).join(' · ')}` : '';
+}
+
 function openStreak(selected = null) {
+  if (!STREAK_ENABLED) {
+    openRoadmap();
+    return;
+  }
   $('streakRules').textContent = `Punkte bei erreichter Reward-Schwelle: ${CUSTOMER_TIERS.map(tier => `${tier.label} +${tier.points} (ab ${Math.round(tier.reward.quality * 100)} %)`).join(' · ')}. Schwächere Boxen geben 0 Punkte. Kunden warten unbegrenzt; Abwesenheit kostet keine Serienpunkte.`;
   $('streakRewards').innerHTML = CHECKPOINTS.map(checkpoint => `<section id="checkpoint-${checkpoint.points}" tabindex="-1" class="milestone${state.claimedCheckpoints.includes(checkpoint.points) ? ' unlocked' : ''}${checkpoint.points === selected ? ' selected-checkpoint' : ''}">
     <h3>${checkpoint.icon} ${checkpoint.points} Punkte · ${checkpoint.title}</h3>
@@ -540,7 +657,7 @@ const rewardFor = (q, c, hasPackedItems = state.box.length > 0) => {
   const earned = hasPackedItems && q >= c.itemReward.quality;
   const item = earned ? c.itemReward.item || null : null;
   const material = earned ? c.itemReward.material || null : null;
-  const points = earned ? CUSTOMER_TIERS.find(tier => tier.id === c.tier).points : 0;
+  const points = STREAK_ENABLED && earned ? CUSTOMER_TIERS.find(tier => tier.id === c.tier).points : 0;
   return { gold: Math.round((10 + q * 30) * m), exp: Math.round((5 + q * 15) * m), item, material, earned, points };
 };
 
@@ -718,7 +835,7 @@ function send() {
     : '';
   if (r.item) state.inventory[r.item.id] = (state.inventory[r.item.id] || 0) + 1;
   if (r.material) state.materials[r.material.id] += r.material.amount;
-  const bonuses = changeStreak(r.points);
+  const bonuses = STREAK_ENABLED ? changeStreak(r.points) : grantLevelRewards(previousLevel, newLevel);
   sfx.play(bonuses.length ? 'checkpoint' : newLevel > previousLevel ? 'level' : 'send');
   state.box = [];
   state.boxType = null;
@@ -737,7 +854,7 @@ function send() {
     <h1>${label}</h1>
     <div>Erfüllung: ${qualityPercent(q)}%</div>
     <div>💰 +${r.gold} &nbsp; ⭐ +${r.exp}</div>
-    <div>Serie: +${r.points} Punkte · Gesamt: ${state.streak}</div>
+    ${STREAK_ENABLED ? `<div>Serie: +${r.points} Punkte · Gesamt: ${state.streak}</div>` : ''}
     ${levelUp}
     ${bonuses.length ? `<ul class="new-unlocks">${bonuses.map(bonus => `<li>${bonus}</li>`).join('')}</ul>` : ''}
     ${repayment ? `<div>Vorschuss-Rückzahlung: −${repayment} Gold · Ausgezahlt: ${r.gold - repayment} Gold</div>` : ''}
@@ -888,7 +1005,7 @@ function render() {
       <span class="item-cost">Shopwert: ${itemCost} 💰 (ohne Rabatt; Belohnungsitems sind gratis)</span>
       <span class="net-gold${netGold < 0 ? ' loss' : ''}"> · Gegenwert-Differenz: ${netGold >= 0 ? '+' : ''}${netGold} 💰</span>
       ${repayment ? `<br>Davon Vorschuss-Rückzahlung: ${repayment} Gold (in der Differenz berücksichtigt)` : ''}<br>
-      ${itemRewardHtml(c, r.earned)}<div class="streak-preview">+${CUSTOMER_TIERS.find(tier => tier.id === c.tier).points} Serienpunkte bei Reward</div>`;
+      ${itemRewardHtml(c, r.earned)}${STREAK_ENABLED ? `<div class="streak-preview">+${CUSTOMER_TIERS.find(tier => tier.id === c.tier).points} Serienpunkte bei Reward</div>` : ''}`;
   } else {
     $('preview').textContent = '';
   }
@@ -988,6 +1105,7 @@ function collectCraft(index) {
 
 function renderWorkshop() {
   const level = progression().level;
+  $('workshopHint').textContent = `Rohstoffe gibt es manchmal statt eines Items als Kundenbelohnung. Beim Herstellen werden sie sofort verbraucht. Fertige Items warten auf Abholung – auch offline. Ein Platz bleibt bis zur Abholung belegt. Ab Level ${WORKSHOP_SPEED_LEVEL} starten Aufträge 20 % schneller.`;
   const slots = workshopCapacity(level);
   const now = Math.max(Date.now(), lastUpdatedAt);
   const ready = state.crafts.filter(craft => craft.finishAt <= now).length;
@@ -1047,7 +1165,10 @@ function placeOrder(id, quantity) {
   const price = orderPrice(item, quantity);
   const discount = orderDiscount();
   state.gold -= price;
-  if (discount) state.pendingDiscounts.shift();
+  if (discount) {
+    if (state.pendingDiscounts.length) state.pendingDiscounts.shift();
+    else state.levelDiscounts.shift();
+  }
   state.orders.push({ item: id, quantity, finishAt: lastUpdatedAt + ORDER_DURATION });
   $('supplyMessage').classList.remove('error');
   $('supplyMessage').textContent = `${quantity}× ${item.name} für ${price} Gold bestellt${discount ? ` (${discount} % Rabatt)` : ''}. Lieferung in 30 Minuten.`;
@@ -1144,12 +1265,13 @@ $('finishShopping').onclick = finishShopping;
 $('checkout').onclick = checkout;
 $('shopDialog').addEventListener('cancel', event => event.preventDefault());
 $('restock').onclick = emergencyRestock;
-function openRoadmap() {
-  renderRoadmap();
+function openRoadmap(selected = null) {
+  renderRoadmap(selected);
   $('roadmapDialog').showModal();
+  if (Number.isInteger(selected)) $(`level-milestone-${selected}`).focus();
 }
-$('showRoadmap').onclick = openRoadmap;
-$('shopRoadmap').onclick = openRoadmap;
+$('showRoadmap').onclick = () => openRoadmap();
+$('shopRoadmap').onclick = () => openRoadmap();
 $('closeRoadmap').onclick = () => $('roadmapDialog').close();
 $('showStreak').onclick = () => openStreak();
 $('shopStreak').onclick = () => openStreak();

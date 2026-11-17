@@ -52,8 +52,9 @@ function createGame(options = {}) {
   });
   for (const file of ['sound.js', 'game.js']) {
     let source = readFileSync(`${__dirname}/${file}`, 'utf8');
-    // Keep regression coverage for the preserved merchant; new ordering tests use the live disabled mode.
+    // Historical fixtures exercise preserved systems; live milestone tests leave both systems disabled.
     if (file === 'game.js' && options.legacyMerchant !== false) source = source.replace('const MERCHANT_ENABLED = false;', 'const MERCHANT_ENABLED = true;');
+    if (file === 'game.js' && options.legacyStreak !== false) source = source.replace('const STREAK_ENABLED = false;', 'const STREAK_ENABLED = true;');
     vm.runInContext(source, context);
   }
   return code => vm.runInContext(code, context);
@@ -113,6 +114,177 @@ function createShoppingGame(options = {}) {
 function createOrderingGame(options = {}) {
   return createGame({ ...options, legacyMerchant: false });
 }
+
+function createMilestoneGame(options = {}) {
+  return createOrderingGame({ ...options, legacyStreak: false });
+}
+
+test('the reused milestone track always shows the next five levels with working detail buttons', () => {
+  const run = createMilestoneGame();
+  for (const [level, expected] of [[1, [2,3,4,5,6]], [8, [9,10,11,12,13]], [20, [21,22,23,24,25]],
+    [23, [24,25]], [25, []], [28, []]]) {
+    run(`state.exp = expForLevel(${level}); render()`);
+    const html = run("$('streakCheckpoints').innerHTML");
+    const actual = [...html.matchAll(/data-level-milestone="(\d+)"/g)].map(match => Number(match[1]));
+    assert.deepEqual(actual, expected);
+    assert.doesNotMatch(html, /data-checkpoint|streakDialog/);
+    assert.equal(run("$('streakPoints').textContent"), level);
+  }
+  run(`state.exp = expForLevel(8) + 400; globalThis.buttons = [9,10,11,12,13].map(level =>
+    ({dataset: {levelMilestone: String(level)}}));
+    $('streakCheckpoints').querySelectorAll = () => buttons; render(); buttons[2].onclick();`);
+  assert.equal(run("$('roadmapDialog').open"), true);
+  assert.match(run("$('roadmap').innerHTML"), /id="level-milestone-11"[^>]*selected-checkpoint/);
+  assert.equal(run("$('streakProgress').value"), .5);
+  assert.match(run("$('streakNext').textContent"), /400 EXP fehlen/);
+  assert.equal((run("$('roadmap').innerHTML").match(/id="level-milestone-/g) || []).length, 25);
+  run("$('closeRoadmap').onclick(); $('showStreak').onclick()");
+  assert.equal(run("$('roadmapDialog').open"), true);
+  assert.notEqual(run("$('streakDialog').open"), true);
+});
+
+test('streaks no longer award points, packages, sounds or result and preview text', () => {
+  const run = createMilestoneGame();
+  run(`state.streak = 9; globalThis.stock = JSON.stringify(state.inventory); changeStreak(20); render();`);
+  assert.equal(run('state.streak'), 9);
+  assert.equal(run('JSON.stringify(state.inventory)'), run('stock'));
+  assert.equal(run('state.claimedCheckpoints.length'), 0);
+  run(`selectCustomer(state.queue[0].id); chooseBox('small');
+    state.active.needs = [{attr:'hp', target:10, prio:1}]; packItem('pot1');
+    globalThis.sounds = []; sfx.play = name => sounds.push(name);`);
+  assert.doesNotMatch(run("$('preview').innerHTML"), /Serienpunkte|streak-preview/);
+  assert.equal(run('rewardFor(quality(), state.active).points'), 0);
+  run('send()');
+  assert.equal(run('state.streak'), 9);
+  assert.equal(run('state.claimedCheckpoints.length'), 0);
+  assert.doesNotMatch(run("$('result').innerHTML"), /Serie:|Serienpunkte|Checkpunkt/);
+  assert.deepEqual(JSON.parse(run('JSON.stringify(sounds)')), ['send']);
+});
+
+test('live unlocks reach level 25, every level has a milestone, and item pools remain valid', () => {
+  const run = createMilestoneGame();
+  for (let level = 1; level <= 25; level++) {
+    run(`state.exp = expForLevel(${level})`);
+    assert.ok(run(`unlocksAtLevel(${level}).length`) > 0, `Level ${level} has a reward or unlock`);
+    assert.equal(run(`Array.from({length: 30}, () => generateCustomer()).every(customer =>
+      CUSTOMER_TIERS.find(tier => tier.id === customer.tier).level <= progression().level &&
+      (!customer.itemReward.item || isUnlocked(customer.itemReward.item)))`), true);
+  }
+  assert.equal(run("CUSTOMER_TIERS.find(tier => tier.id === 'demigod').level"), 25);
+  assert.equal(run("CUSTOMER_TIERS.find(tier => tier.id === 'hero').level"), 18);
+  assert.equal(run('WORKSHOP_LEVEL'), 4);
+  assert.equal(run('WORKSHOP_SPEED_LEVEL'), 14);
+  assert.equal(run('Math.max(...ITEMS.map(item => item.level))'), 18);
+  run('state.exp = expForLevel(13); renderWorkshop()');
+  assert.equal(run('workshopCapacity()'), 2);
+  run("state.exp = expForLevel(24); selectCustomer(state.queue[0].id); chooseBox('expedition')");
+  assert.equal(run('capacity()'), 8);
+});
+
+test('level-up packages are automatic, persisted once, and crossing several levels grants each reward once', () => {
+  const storage = new Map();
+  const run = createMilestoneGame({ storage });
+  run(`state.exp = 95; selectCustomer(state.queue[0].id); chooseBox('small');
+    state.active.itemReward = {quality: .5, item: ITEMS.find(item => item.id === 'pot1')};
+    state.active.needs = [{attr:'hp', target:10, prio:1}]; packItem('pot1'); send();`);
+  assert.equal(run('progression().level'), 2);
+  assert.equal(run('state.inventory.bandage'), 3);
+  assert.equal(run('state.inventory.leatherCap'), 3);
+  assert.equal(run('state.inventory.sparkStone'), 3);
+  assert.match(run("$('result').innerHTML"), /Level 2: Itempaket/);
+  const reloaded = createMilestoneGame({ storage });
+  assert.equal(reloaded('state.inventory.bandage'), 3);
+  reloaded('grantLevelRewards(1,2); render()');
+  assert.equal(reloaded('state.inventory.bandage'), 3);
+  reloaded(`state.exp = expForLevel(25); grantLevelRewards(2,25); render();`);
+  assert.deepEqual(JSON.parse(reloaded('JSON.stringify(state.levelDiscounts)')), [10,10,15,15,20]);
+  assert.equal(reloaded('state.inventory.righteousShield'), 1);
+  assert.equal(reloaded('state.inventory.pot3'), 2);
+  const stock = reloaded('JSON.stringify(state.inventory)');
+  reloaded('grantLevelRewards(1,25)');
+  assert.equal(reloaded('JSON.stringify(state.inventory)'), stock);
+  assert.deepEqual(JSON.parse(createMilestoneGame({ storage })('JSON.stringify(state.levelDiscounts)')), [10,10,15,15,20]);
+});
+
+test('level discounts are queued per order, survive reload and do not vanish on a failed order', () => {
+  const storage = new Map();
+  const run = createMilestoneGame({ storage });
+  run(`state.exp = expForLevel(8); grantLevelRewards(7,8); state.gold = 0; render(); placeOrder('bandage', 5);`);
+  assert.equal(run('orderDiscount()'), 10);
+  run("state.gold = 500; placeOrder('bandage', 5)");
+  assert.equal(run('state.gold'), 486);
+  assert.equal(run('state.levelDiscounts.length'), 0);
+  const reload = createMilestoneGame({ storage });
+  assert.equal(reload('state.gold'), 486);
+  assert.equal(reload('state.levelDiscounts.length'), 0);
+  reload("placeOrder('bandage', 5)");
+  assert.equal(reload('state.gold'), 471);
+});
+
+test('old saves keep unlocked content, in-flight work, pending discounts and level fraction when progression stretches', () => {
+  for (const [oldLevel, newLevel] of [[1,1], [2,5], [3,9], [4,12], [5,18], [6,19], [7,25], [10,28]]) {
+    const storage = new Map();
+    const old = createOrderingGame({ storage });
+    old(`state.exp = expForLevel(${oldLevel}) + ${oldLevel} * 50;
+      state.inventory = Object.fromEntries(ITEMS.filter(isUnlocked).map(item => [item.id, 2]));
+      globalThis.unlockedItems = ITEMS.filter(isUnlocked).map(item => item.id);
+      globalThis.unlockedBoxes = BOXES.filter(isUnlocked).map(box => box.id);
+      changeStreak(25);
+      if (workshopCapacity()) { state.materials.cloth = 10; startCraft('bandage'); }
+      placeOrder('bandage', 5); render();`);
+    const key = old('SAVE_KEY');
+    const data = JSON.parse(storage.get(key));
+    data.version = 3;
+    delete data.state.claimedLevelRewards;
+    delete data.state.levelDiscounts;
+    storage.set(key, JSON.stringify(data));
+    const restored = createMilestoneGame({ storage });
+    assert.equal(restored('savingBlocked'), false, `old level ${oldLevel} migrates`);
+    assert.equal(restored('progression().level'), newLevel);
+    assert.equal(restored('progression().current / progression().required'), .5);
+    assert.equal(restored('state.gold'), old('state.gold'));
+    assert.equal(restored('JSON.stringify(state.inventory)'), old('JSON.stringify(state.inventory)'));
+    assert.equal(restored('JSON.stringify(state.orders)'), old('JSON.stringify(state.orders)'));
+    assert.equal(restored('JSON.stringify(state.crafts)'), old('JSON.stringify(state.crafts)'));
+    assert.equal(restored('JSON.stringify(state.pendingDiscounts)'), old('JSON.stringify(state.pendingDiscounts)'));
+    assert.equal(restored(`ITEMS.filter(item => ${old('JSON.stringify(unlockedItems)')}.includes(item.id)).every(isUnlocked)`), true);
+    assert.equal(restored(`BOXES.filter(box => ${old('JSON.stringify(unlockedBoxes)')}.includes(box.id)).every(isUnlocked)`), true);
+    const stock = restored('JSON.stringify(state.inventory)');
+    restored(`grantLevelRewards(1,${newLevel})`);
+    assert.equal(restored('JSON.stringify(state.inventory)'), stock, 'migration must not retroactively grant packages');
+    const second = createMilestoneGame({ storage });
+    assert.equal(second('state.exp'), restored('state.exp'), 'migration applies only once');
+    assert.equal(JSON.parse(storage.get(key)).version, 4);
+  }
+});
+
+test('legacy discounts are used before level coupons and level reward save fields reject malformed data', () => {
+  const run = createMilestoneGame();
+  run(`state.pendingDiscounts = [15]; state.claimedCheckpoints = [15];
+    state.levelDiscounts = [15]; state.gold = 500; placeOrder('bandage', 5);`);
+  assert.equal(run('state.gold'), 486);
+  assert.equal(run('state.pendingDiscounts.length'), 0);
+  assert.equal(run('orderDiscount()'), 15);
+  run("placeOrder('bandage', 5)");
+  assert.equal(run('state.gold'), 473);
+  assert.equal(run('orderDiscount()'), 0);
+  for (const fields of [
+    { claimedLevelRewards: [2] }, { claimedLevelRewards: ['2'] },
+    { claimedLevelRewards: [1] }, { claimedLevelRewards: [2,2] },
+    { levelDiscounts: [100] }, { levelDiscounts: ['10'] }, { levelDiscounts: null },
+  ]) {
+    const storage = new Map();
+    const seed = createMilestoneGame({ storage });
+    const key = seed('SAVE_KEY');
+    const data = JSON.parse(storage.get(key));
+    Object.assign(data.state, fields);
+    const invalid = JSON.stringify(data);
+    storage.set(key, invalid);
+    const restored = createMilestoneGame({ storage });
+    assert.equal(restored('savingBlocked'), true);
+    assert.equal(storage.get(key), invalid);
+  }
+});
 
 test('availability filter defaults on, keeps orderable or stocked items and can reveal the full catalog', () => {
   const run = createOrderingGame();
@@ -283,7 +455,7 @@ test('old merchant visits migrate without charging the cart and carry their acti
     run("placeOrder('bandage', 5)");
     assert.equal(run('state.gold'), 451); // 15 Gold minus 15%, rounded up.
     assert.equal(run('state.pendingDiscounts.length'), 0);
-    assert.equal(JSON.parse(storage.get(key)).version, 3);
+    assert.equal(JSON.parse(storage.get(key)).version, 4);
     const reloaded = createOrderingGame({ storage });
     assert.equal(reloaded('state.gold'), 451);
     assert.equal(reloaded('state.pendingDiscounts.length'), 0);
@@ -445,7 +617,7 @@ test('version 1 saves retain customers and progress and migrate to an empty work
   assert.equal(restored('state.active.itemReward.item.id'), data.state.active.rewardItem);
   assert.deepEqual(JSON.parse(restored('JSON.stringify(state.materials)')), { wood: 0, iron: 0, cloth: 0 });
   assert.equal(restored('state.crafts.length'), 0);
-  assert.equal(JSON.parse(storage.get(run('SAVE_KEY'))).version, 3);
+  assert.equal(JSON.parse(storage.get(run('SAVE_KEY'))).version, 4);
 });
 
 test('corrupt workshop data is rejected without replacing the local save', () => {
