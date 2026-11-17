@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1b1a2e">
 <meta http-equiv="Cache-Control" content="no-cache">
 <title>Lootbox Packer</title>
-<link rel="stylesheet" href="style.css?v=21">
+<link rel="stylesheet" href="style.css?v=22">
 </head>
 <body>
 <header>
@@ -26,6 +26,8 @@
   </section>
 </header>
 <p id="soundStatus" class="hint" role="status" hidden></p>
+<p id="saveStatus" class="hint" role="status"></p>
+<p class="hint">Der Spielstand liegt nur in diesem Browser. Beim Löschen der Websitedaten geht er verloren.</p>
 
 <div class="level-status">
   <span>EXP: <b id="exp">0/100</b></span>
@@ -41,12 +43,14 @@
 <main class="home">
 <section class="card" aria-labelledby="queueTitle">
   <h2 id="queueTitle" tabindex="-1">Kunden <small id="queueInfo"></small></h2>
-  <p class="hint">Wähle einen Kunden, um seine Box zu packen.</p>
+  <p class="hint">Alle 30 Minuten kommt ein Kunde dazu, solange ein Platz frei ist. Wähle einen Kunden, um seine Box zu packen.</p>
+  <p id="arrivalStatus" class="hint" role="status"></p>
   <div id="queue" class="queue"></div>
 </section>
 </main>
 
 <dialog id="orderDialog" class="order-dialog" aria-labelledby="orderTitle">
+<p id="orderSaveStatus" class="hint" role="status"></p>
 <section id="boxSelection">
   <div class="order-heading">
     <button id="backToCustomers" class="secondary">← Kunden</button>
@@ -101,6 +105,7 @@
     <span>💰 <b id="shopGold">0</b></span>
   </div>
   <p id="shopHint" class="hint"></p>
+  <p id="shopSaveStatus" class="hint" role="status"></p>
   <p id="shopDiscount" class="hint"></p>
   <div class="shop-links">
     <button id="shopRoadmap" class="secondary">Milestones</button>
@@ -130,7 +135,7 @@
     <h2 id="roadmapTitle">Level-Milestones</h2>
     <button id="closeRoadmap" class="secondary">Schließen</button>
   </div>
-  <p class="hint">Level 2 braucht 100 EXP, danach kostet jeder Aufstieg 100 EXP mehr. Während dieser Übersicht pausieren die Kundentimer.</p>
+  <p class="hint">Level 2 braucht 100 EXP, danach kostet jeder Aufstieg 100 EXP mehr. Neue Kunden kommen auch während dieser Übersicht oder bei geschlossenem Spiel dazu, bis alle Plätze belegt sind.</p>
   <div id="roadmap"></div>
 </dialog>
 
@@ -140,12 +145,12 @@
     <button id="closeStreak" class="secondary">Schließen</button>
   </div>
   <p id="streakRules" class="hint"></p>
-  <p class="hint">Jeder Checkpunkt gibt seinen Bonus einmal pro Spieldurchlauf – auch wenn deine Punkte später sinken. Pakete landen automatisch im Inventar. Rabatte gelten je einen ganzen Händlerbesuch, auch bei mehreren Checkouts, und enden mit „Einkauf beenden“. Mehrere Rabatte gelten für aufeinanderfolgende Besuche. Während dieser Übersicht pausieren die Kundentimer.</p>
+  <p class="hint">Jeder Checkpunkt gibt seinen Bonus einmal pro Spielstand. Abwesenheit kostet keine Punkte. Pakete landen automatisch im Inventar. Rabatte gelten je einen ganzen Händlerbesuch, auch bei mehreren Checkouts, und enden mit „Einkauf beenden“. Mehrere Rabatte gelten für aufeinanderfolgende Besuche.</p>
   <div id="streakRewards"></div>
 </dialog>
 
 <div id="result" class="overlay hidden"></div>
-<script src="sound.js?v=21"></script>
-<script src="game.js?v=21"></script>
+<script src="sound.js?v=22"></script>
+<script src="game.js?v=22"></script>
 </body>
 </html>

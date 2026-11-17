@@ -41,6 +41,7 @@ small { opacity: .7; font-weight: 400; }
 .box-item .remove { opacity: .65; }
 .empty { text-align: center; opacity: .5; font-size: 14px; padding: 10px; }
 .hint { margin: 0 0 10px; font-size: 13px; opacity: .8; }
+.hint.error { color: #ff6b6b; opacity: 1; }
 .merchant-status { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
 .merchant-status progress { width: 100%; accent-color: #ffd166; }
 #debtInfo { color: #ff6b6b; }
@@ -131,12 +132,8 @@ button.primary:active { transform: scale(.98); }
 .queue-item .txt { flex: 1; font-size: 14px; }
 .queue-item .txt small { display: block; }
 .queue-item .mult { font-weight: 700; color: #ffd166; }
-.queue-item .timer { position: absolute; left: 0; right: 0; bottom: 0; height: 5px; background: #15142a; }
-.queue-item .timer > div { height: 100%; background: #8a88b0; transition: width .25s linear; }
 .r-rare { border-left-color: #4aa3ff; }
-.r-rare .timer > div { background: #4aa3ff; }
 .r-epic { border-left-color: #ffd166; background: #46385e; }
-.r-epic .timer > div { background: #ffd166; }
 .tier-wannabe { border-left-color: #8a88b0; }
 .tier-adventurer { border-left-color: #4cc38a; }
 .tier-hero { border-left-color: #4aa3ff; }
@@ -145,7 +142,6 @@ button.primary:active { transform: scale(.98); }
 .cust-name.r-epic { color: #ffd166; }
 .cust-name small { font-size: 13px; font-weight: 400; opacity: .8; }
 button.primary:disabled { opacity: .4; }
-.queue-item .secs { min-width: 36px; text-align: right; font-variant-numeric: tabular-nums; opacity: .9; }
 .picker { display: flex; flex-direction: column; gap: 6px; }
 .pick-item { display: flex; align-items: center; gap: 10px; background: #34325c; border: 2px solid transparent; border-radius: 10px; color: inherit; font: inherit; padding: 10px; text-align: left; touch-action: manipulation; }
 .pick-item.selected { border-color: #ffd166; }
@@ -157,7 +153,7 @@ button.primary:disabled { opacity: .4; }
 .pick-item .req { font-size: 13px; }
 .queue-item .txt .needs { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 3px; }
 .card, .txt { min-width: 0; }
-.shop-item .cost, .queue-item .secs, .box-item .remove { flex-shrink: 0; }
+.shop-item .cost, .box-item .remove { flex-shrink: 0; }
 .need-head { flex-wrap: wrap; gap: 4px; }
 .item-rarity-common { --item-color: #b7b3cd; }
 .item-rarity-rare { --item-color: #4cc38a; }

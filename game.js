@@ -102,18 +102,18 @@ const DEMIGOD_CLASSES = [
   { cls: 'Sonnengott',      icon: '☀️', needs: [ { attr: 'magic', prio: 3, target: 120 }, { attr: 'hp', prio: 3, target: 90 }, { attr: 'melee', prio: 2, target: 60 } ] },
 ];
 
-// Belohnungsfaktor und Standard-Wartezeit je Seltenheit.
+// Belohnungsfaktor je Seltenheit.
 const RARITY = {
-  common: { label: 'Gewöhnlich', mult: 1, time: 90 },
-  rare:   { label: 'Selten',     mult: 2, time: 75 },
-  epic:   { label: 'Episch',     mult: 4, time: 60 },
+  common: { label: 'Gewöhnlich', mult: 1 },
+  rare:   { label: 'Selten',     mult: 2 },
+  epic:   { label: 'Episch',     mult: 4 },
 };
 const CUSTOMER_PLACES = [
-  { level: 1, count: 3 },
-  { level: 3, count: 4 },
-  { level: 6, count: 5 },
+  { level: 1, count: 4 },
+  { level: 3, count: 5 },
+  { level: 6, count: 6 },
 ];
-const SPAWN_INTERVAL = 5;
+const SPAWN_INTERVAL = 30 * 60;
 const MERCHANT_INTERVAL = 5;
 const RESTOCK_COST = 20;
 const RESTOCK_SIZE = 3;
@@ -122,15 +122,16 @@ const SHOP_BASE_IDS = ['bandage', 'dag', 'leatherCap', 'sparkStone'];
 const SHOP_SLOT_INTERVAL = 5;
 const shopPrice = item => Math.ceil(item.cost * 1.25);
 const CUSTOMER_TIERS = [
-  { id: 'wannabe', label: 'Wannabe', level: 1, points: 1, weight: 50, scale: 0.6, rarity: 'common', time: 120,
+  { id: 'wannabe', label: 'Wannabe', level: 1, points: 1, weight: 50, scale: 0.6, rarity: 'common',
     reward: { quality: 0.5, ids: ['pot1', 'dag', 'shield', 'wand', 'bandage', 'ironSword', 'buckler', 'leatherCap', 'sparkStone'] } },
-  { id: 'adventurer', label: 'Abenteurer', level: 2, points: 2, weight: 32, scale: 1, rarity: 'common', time: 90,
+  { id: 'adventurer', label: 'Abenteurer', level: 2, points: 2, weight: 32, scale: 1, rarity: 'common',
     reward: { quality: 0.7, ids: ['pot2', 'sword', 'battleAxe', 'steelShield', 'restorationDraught', 'runeFocus', 'emberCharm', 'vampiricDagger'] } },
-  { id: 'hero', label: 'Held', level: 5, points: 3, weight: 15, scale: 1.2, rarity: 'rare', time: 75,
+  { id: 'hero', label: 'Held', level: 5, points: 3, weight: 15, scale: 1.2, rarity: 'rare',
     reward: { quality: 0.85, ids: ['plate', 'righteousShield', 'runeblade', 'lifebloomStaff', 'warhammer'] } },
-  { id: 'demigod', label: 'Demi-Gott', level: 7, points: 4, weight: 3, scale: 1.5, rarity: 'epic', time: 60,
+  { id: 'demigod', label: 'Demi-Gott', level: 7, points: 4, weight: 3, scale: 1.5, rarity: 'epic',
     reward: { quality: 1, ids: ['pot3'] } },
 ];
+const CUSTOMER_CLASSES = { wannabe: WANNABE_CLASSES, adventurer: CLASSES, hero: HERO_CLASSES, demigod: DEMIGOD_CLASSES };
 const CHECKPOINTS = [
   { points: 10, icon: '🎁', title: '3 Basisitems', description: 'Drei zufällige Basisitems kommen sofort in dein Inventar.', package: 'basic' },
   { points: 15, icon: '🏷️', title: '10 % Händlerrabatt', description: '10 % Rabatt während des gesamten nächsten Händlerbesuchs.', discount: 10 },
@@ -208,27 +209,153 @@ function rollCustomerTier() {
 function generateCustomer() {
   const tier = rollCustomerTier();
   const rarity = tier.rarity;
-  const def = RARITY[rarity];
-  const classes = {
-    wannabe: WANNABE_CLASSES,
-    adventurer: CLASSES,
-    hero: HERO_CLASSES,
-    demigod: DEMIGOD_CLASSES,
-  }[tier.id];
-  const base = pick(classes);
+  const base = pick(CUSTOMER_CLASSES[tier.id]);
   const needs = base.needs.map(n => ({ ...n, target: Math.max(5, Math.round(n.target * tier.scale * (0.8 + Math.random() * 0.4))) }));
   const itemReward = {
     quality: tier.reward.quality,
     item: pick(ITEMS.filter(item => tier.reward.ids.includes(item.id) && isUnlocked(item))),
   };
-  return { id: nextId++, name: pick(NAMES), cls: base.cls, icon: base.icon, needs, rarity, tier: tier.id, tierLabel: tier.label, itemReward, timeLeft: tier.time || def.time, maxTime: tier.time || def.time };
+  return { id: nextId++, name: pick(NAMES), cls: base.cls, icon: base.icon, needs, rarity, tier: tier.id, tierLabel: tier.label, itemReward };
 }
 
 const state = {
-  gold: 500, exp: 0, inventory: Object.fromEntries(RESTOCK_IDS.map(id => [id, 5])), cart: {}, boxType: null, box: [], active: null, queue: [], spawnT: 0,
+  gold: 500, exp: 0, inventory: Object.fromEntries(RESTOCK_IDS.map(id => [id, 5])), cart: {}, boxType: null, box: [], active: null, queue: [], spawnT: SPAWN_INTERVAL,
   shopping: false, shopOffers: [], completed: 0, debt: 0, showingResult: false,
   streak: 0, claimedCheckpoints: [], pendingDiscounts: [], activeDiscount: null,
 };
+
+const SAVE_KEY = 'lootboxPacker.save';
+const SAVE_VERSION = 1;
+let lastUpdatedAt = Date.now();
+let savingBlocked = false;
+let storageError = '';
+
+function showSaveStatus(message, error = false) {
+  for (const id of ['saveStatus', 'orderSaveStatus', 'shopSaveStatus']) {
+    if ($(id).textContent !== message) $(id).textContent = message;
+    $(id).classList.toggle('error', error);
+  }
+}
+
+function storageFailure(message, error) {
+  if (storageError !== message) console.error(message, error);
+  storageError = message;
+  showSaveStatus(message, true);
+}
+
+function savedCustomer(customer) {
+  if (!customer) return null;
+  return { id: customer.id, name: customer.name, cls: customer.cls, tier: customer.tier,
+    needs: customer.needs, rewardItem: customer.itemReward.item.id };
+}
+
+function saveGame() {
+  if (savingBlocked) return;
+  try {
+    // Auszahlungen bleiben gespeichert; die kurzlebige Ergebnisanzeige wird beim Laden übersprungen.
+    const savedState = { ...state, boxType: state.boxType?.id || null, box: state.box.map(item => item.id),
+      active: savedCustomer(state.active), queue: state.queue.map(savedCustomer), showingResult: false };
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ version: SAVE_VERSION, savedAt: lastUpdatedAt, state: savedState }));
+    storageError = '';
+    showSaveStatus('Automatisch lokal gespeichert · nur in diesem Browser.');
+  } catch (error) {
+    storageFailure('Speichern fehlgeschlagen. Lass diese Sitzung offen und erlaube lokalen Browser-Speicher.', error);
+  }
+}
+
+function decodeSave(data) {
+  const require = condition => { if (!condition) throw new Error('Ungültiger oder inkompatibler Spielstand.'); };
+  const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+  const count = value => Number.isSafeInteger(value) && value >= 0;
+  require(record(data) && data.version === SAVE_VERSION && count(data.savedAt) && record(data.state));
+  const saved = data.state;
+  for (const key of ['gold', 'exp', 'debt', 'streak', 'completed']) require(count(saved[key]));
+  require(saved.completed < MERCHANT_INTERVAL && typeof saved.shopping === 'boolean');
+  require(Number.isFinite(saved.spawnT) && saved.spawnT >= 0 && saved.spawnT <= SPAWN_INTERVAL);
+  const level = progression(saved.exp).level;
+  const itemFor = id => {
+    const item = ITEMS.find(item => item.id === id && item.level <= level);
+    require(!!item);
+    return item;
+  };
+  const itemCounts = value => {
+    require(record(value));
+    return Object.fromEntries(Object.entries(value).map(([id, quantity]) => {
+      itemFor(id);
+      require(count(quantity));
+      return [id, quantity];
+    }));
+  };
+  const customerFor = value => {
+    require(record(value) && Number.isSafeInteger(value.id) && value.id > 0 && NAMES.includes(value.name));
+    const tier = CUSTOMER_TIERS.find(tier => tier.id === value.tier && tier.level <= level);
+    require(!!tier);
+    const base = CUSTOMER_CLASSES[tier.id].find(base => base.cls === value.cls);
+    require(!!base && Array.isArray(value.needs) && value.needs.length > 0 && value.needs.length <= 3);
+    const needs = value.needs.map(need => {
+      require(record(need) && Object.hasOwn(ATTRS, need.attr) && [1, 2, 3].includes(need.prio) && count(need.target) && need.target > 0);
+      return { attr: need.attr, prio: need.prio, target: need.target };
+    });
+    require(new Set(needs.map(need => need.attr)).size === needs.length && tier.reward.ids.includes(value.rewardItem));
+    return { id: value.id, name: value.name, cls: base.cls, icon: base.icon, tier: tier.id, tierLabel: tier.label,
+      rarity: tier.rarity, needs, itemReward: { quality: tier.reward.quality, item: itemFor(value.rewardItem) } };
+  };
+  require(Array.isArray(saved.queue) && Array.isArray(saved.box) && Array.isArray(saved.shopOffers));
+  const queue = saved.queue.map(customerFor);
+  const active = saved.active === null ? null : customerFor(saved.active);
+  const customers = [...queue, ...(active ? [active] : [])];
+  require(customers.length <= CUSTOMER_PLACES.filter(entry => entry.level <= level).at(-1).count);
+  require(new Set(customers.map(customer => customer.id)).size === customers.length);
+  const boxType = saved.boxType === null ? null : BOXES.find(box => box.id === saved.boxType && box.level <= level);
+  require(boxType !== undefined && (!boxType || active));
+  const box = saved.box.map(itemFor);
+  require(box.length <= (boxType?.slots || 0));
+  const inventory = itemCounts(saved.inventory);
+  const cart = itemCounts(saved.cart);
+  const shopOffers = saved.shopOffers.map(id => itemFor(id).id);
+  require(new Set(shopOffers).size === shopOffers.length && shopOffers.length <= shopCapacity(level));
+  require(Object.keys(cart).every(id => shopOffers.includes(id)));
+  if (saved.shopping) require(!active && SHOP_BASE_IDS.every(id => shopOffers.includes(id)));
+  else require(shopOffers.length === 0 && Object.keys(cart).length === 0 && saved.activeDiscount === null);
+  const checkpointList = (value, discountsOnly = false) => {
+    require(Array.isArray(value) && new Set(value).size === value.length);
+    require(value.every(points => CHECKPOINTS.some(entry => entry.points === points && (!discountsOnly || entry.discount))));
+    return [...value];
+  };
+  const claimedCheckpoints = checkpointList(saved.claimedCheckpoints);
+  const pendingDiscounts = checkpointList(saved.pendingDiscounts, true);
+  require(pendingDiscounts.every(points => claimedCheckpoints.includes(points)));
+  const activeDiscount = saved.activeDiscount;
+  require(activeDiscount === null || (saved.shopping && claimedCheckpoints.includes(activeDiscount) &&
+    CHECKPOINTS.some(entry => entry.points === activeDiscount && entry.discount) && !pendingDiscounts.includes(activeDiscount)));
+  return { gold: saved.gold, exp: saved.exp, debt: saved.debt, streak: saved.streak, completed: saved.completed,
+    spawnT: saved.spawnT, shopping: saved.shopping, showingResult: false, inventory, cart, boxType, box, active, queue,
+    shopOffers, claimedCheckpoints, pendingDiscounts, activeDiscount };
+}
+
+function loadGame() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (raw === null) return false;
+    const data = JSON.parse(raw);
+    const restored = decodeSave(data);
+    Object.assign(state, restored);
+    nextId = Math.max(0, ...state.queue.map(customer => customer.id), state.active?.id || 0) + 1;
+    lastUpdatedAt = data.savedAt;
+    syncTime();
+    return true;
+  } catch (error) {
+    savingBlocked = true;
+    storageFailure('Spielstand nicht geladen. Vorhandene Daten bleiben unverändert; diese Sitzung wird nicht gespeichert.', error);
+    return false;
+  }
+}
+
+function syncTime(now = Date.now()) {
+  const elapsed = Math.max(0, now - lastUpdatedAt) / 1000;
+  lastUpdatedAt = Math.max(now, lastUpdatedAt);
+  tick(elapsed);
+}
 
 function changeStreak(points) {
   state.streak = Math.max(0, state.streak + points);
@@ -281,7 +408,7 @@ function renderStreak() {
 }
 
 function openStreak(selected = null) {
-  $('streakRules').textContent = `Punkte bei erreichter Item-Reward-Schwelle: ${CUSTOMER_TIERS.map(tier => `${tier.label} +${tier.points} (ab ${Math.round(tier.reward.quality * 100)} %)`).join(' · ')}. Geht ein wartender Kunde, verlierst du 1 Punkt, unabhängig vom Kundentyp. Schwächere Boxen geben 0 Punkte. Nie unter 0.`;
+  $('streakRules').textContent = `Punkte bei erreichter Item-Reward-Schwelle: ${CUSTOMER_TIERS.map(tier => `${tier.label} +${tier.points} (ab ${Math.round(tier.reward.quality * 100)} %)`).join(' · ')}. Schwächere Boxen geben 0 Punkte. Kunden warten unbegrenzt; Abwesenheit kostet keine Serienpunkte.`;
   $('streakRewards').innerHTML = CHECKPOINTS.map(checkpoint => `<section id="checkpoint-${checkpoint.points}" tabindex="-1" class="milestone${state.claimedCheckpoints.includes(checkpoint.points) ? ' unlocked' : ''}${checkpoint.points === selected ? ' selected-checkpoint' : ''}">
     <h3>${checkpoint.icon} ${checkpoint.points} Punkte · ${checkpoint.title}</h3>
     <p>${checkpoint.description}</p><small>${checkpointStatus(checkpoint)}</small>
@@ -480,6 +607,7 @@ function backToCustomers() {
 
 function send() {
   if (state.shopping || state.showingResult || !state.active || !state.boxType) return;
+  syncTime();
   const q = quality();
   const r = rewardFor(q, state.active);
   const itemRewardResult = r.item ? itemRewardHtml(state.active, true)
@@ -535,35 +663,22 @@ function send() {
 }
 
 function tick(dt) {
-  if (state.shopping || state.showingResult || $('roadmapDialog').open || $('streakDialog').open) return;
-  let changed = false;
-  for (const c of state.queue) c.timeLeft -= dt;
-  const before = state.queue.length;
-  state.queue = state.queue.filter(c => c.timeLeft > 0);
-  const departed = before - state.queue.length;
-  if (departed) {
-    changeStreak(-departed);
-    sfx.play('leave');
-    renderStreak();
-    changed = true;
-  }
-
+  if (!Number.isFinite(dt) || dt < 0) return;
+  let arrived = false;
   state.spawnT -= dt;
-  if (state.spawnT <= 0 && state.queue.length + (state.active ? 1 : 0) < queueCapacity()) {
+  while (state.spawnT <= 0 && state.queue.length + (state.active ? 1 : 0) < queueCapacity()) {
     state.queue.push(generateCustomer());
-    if (!departed) sfx.play('arrival');
-    state.spawnT = SPAWN_INTERVAL;
-    changed = true;
+    state.spawnT += SPAWN_INTERVAL;
+    arrived = true;
   }
-  if (changed) renderQueue(); else updateTimers();
-}
-
-function updateTimers() {
-  for (const c of state.queue) {
-    const el = document.querySelector(`[data-cid="${c.id}"]`);
-    if (!el) continue;
-    el.querySelector('.timer > div').style.width = `${Math.max(0, c.timeLeft / c.maxTime * 100)}%`;
-    el.querySelector('.secs').textContent = `${Math.ceil(c.timeLeft)}s`;
+  if (state.queue.length + (state.active ? 1 : 0) >= queueCapacity()) {
+    state.spawnT = SPAWN_INTERVAL;
+  }
+  if (arrived) {
+    if (!document.hidden) sfx.play('arrival');
+    renderQueue();
+  } else {
+    updateArrivalStatus();
   }
 }
 
@@ -598,15 +713,23 @@ function renderQueue() {
       <span class="txt">${c.name} <small>${c.cls} · ${c.tierLabel}</small><span class="needs">${needs}</span></span>
       ${itemRewardHtml(c)}
       <span class="mult">${m > 1 ? '×' + m : ''}</span>
-      <span class="secs">${Math.ceil(c.timeLeft)}s</span>
-      <span class="timer"><div style="width:${Math.max(0, c.timeLeft / c.maxTime * 100)}%"></div></span>
     </button>`;
   }).join('') : '<div class="empty">Gerade keine Kunden…</div>';
   $('queue').querySelectorAll('.queue-item').forEach(el => el.onclick = () => selectCustomer(+el.dataset.cid));
   $('queueInfo').textContent = `${state.queue.length}/${queueCapacity()}${state.active ? ' · 1 in Bearbeitung' : ''}`;
+  updateArrivalStatus();
+}
+
+function updateArrivalStatus() {
+  const full = state.queue.length + (state.active ? 1 : 0) >= queueCapacity();
+  const minutes = Math.ceil(state.spawnT / 60);
+  $('arrivalStatus').textContent = full
+    ? 'Alle Kundenplätze belegt. Neue Ankünfte pausieren, bis du einen Auftrag abschließt.'
+    : `Nächster Kunde in ${minutes} Min. · Kunden warten unbegrenzt, auch wenn du das Spiel schließt.`;
 }
 
 function render() {
+  syncTime();
   const c = state.active;
   renderStreak();
   $('gold').textContent = state.gold;
@@ -616,7 +739,7 @@ function render() {
   $('exp').textContent = `${progress.current}/${progress.required}`;
   $('levelProgress').max = progress.required;
   $('levelProgress').value = progress.current;
-  $('merchantStatus').textContent = state.shopping ? 'Händler da · Kundentimer pausiert' : `Händler in ${MERCHANT_INTERVAL - state.completed} Aufträgen`;
+  $('merchantStatus').textContent = state.shopping ? 'Händler da · Kunden warten unbegrenzt' : `Händler in ${MERCHANT_INTERVAL - state.completed} Aufträgen`;
   $('merchantProgress').value = state.shopping ? MERCHANT_INTERVAL : state.completed;
   $('debtInfo').textContent = state.debt ? `Offener Vorschuss: ${state.debt} Gold` : '';
   $('finishShopping').hidden = !state.shopping;
@@ -707,6 +830,7 @@ function render() {
   orderDialog.setAttribute('aria-labelledby', state.boxType ? 'packingTitle' : 'orderTitle');
   if (c && !state.shopping && !state.showingResult && !orderDialog.open) orderDialog.showModal();
   else if ((!c || state.shopping || state.showingResult) && orderDialog.open) orderDialog.close();
+  saveGame();
 }
 
 function renderInventory() {
@@ -763,11 +887,24 @@ $('closeRoadmap').onclick = () => $('roadmapDialog').close();
 $('showStreak').onclick = () => openStreak();
 $('shopStreak').onclick = () => openStreak();
 $('closeStreak').onclick = () => $('streakDialog').close();
-for (let i = 0; i < queueCapacity(); i++) state.queue.push(generateCustomer());
+if (!loadGame()) {
+  for (let i = 0; i < queueCapacity(); i++) state.queue.push(generateCustomer());
+}
 render();
-let lastT = performance.now();
+document.addEventListener('visibilitychange', () => {
+  syncTime();
+  saveGame();
+});
+window.addEventListener('pagehide', () => {
+  syncTime();
+  saveGame();
+});
+window.addEventListener('storage', event => {
+  if (event.key !== SAVE_KEY && event.key !== null) return;
+  savingBlocked = true;
+  showSaveStatus('Spielstand in einem anderen Tab geändert. Lade diese Seite neu; dieser Tab speichert nicht mehr.', true);
+});
 setInterval(() => {
-  const now = performance.now();
-  tick(Math.min((now - lastT) / 1000, 1));
-  lastT = now;
-}, 250);
+  syncTime();
+  saveGame();
+}, 10000);

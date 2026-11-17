@@ -6,14 +6,24 @@ const vm = require('node:vm');
 function createGame(options = {}) {
   const elements = new Map();
   const storage = options.storage || new Map();
+  const intervals = [];
   const context = vm.createContext({
     AudioContext: options.AudioContext,
-    console: options.console || console,
+    console: { ...console, ...options.console },
+    Date: class extends Date { static now() { return options.now ? options.now() : 1_700_000_000_000; } },
+    window: {
+      listeners: {},
+      addEventListener(type, listener) { this.listeners[type] = listener; },
+    },
+    intervals,
     matchMedia: () => ({ matches: false, addEventListener() {} }),
     document: {
       hidden: false,
       listeners: {},
-      addEventListener(type, listener) { this.listeners[type] = listener; },
+      addEventListener(type, listener) {
+        const previous = this.listeners[type];
+        this.listeners[type] = event => { previous?.(event); return listener(event); };
+      },
       querySelector: () => null,
       getElementById(id) {
         if (!elements.has(id)) {
@@ -32,13 +42,13 @@ function createGame(options = {}) {
         return elements.get(id);
       },
     },
-    localStorage: {
+    localStorage: options.localStorage || {
       getItem: key => storage.get(key) ?? null,
       setItem: (key, value) => storage.set(key, value),
     },
     confirm: options.confirm || (() => true),
     performance: { now: () => 0 },
-    setInterval() {},
+    setInterval(callback) { intervals.push(callback); },
   });
   for (const file of ['sound.js', 'game.js']) {
     vm.runInContext(readFileSync(`${__dirname}/${file}`, 'utf8'), context);
@@ -96,6 +106,206 @@ function createShoppingGame(options = {}) {
   run('state.inventory = {}; state.exp = expForLevel(7); state.shopping = true; state.shopOffers = ITEMS.map(item => item.id); render();');
   return run;
 }
+
+test('local saves restore progression, inventory and a packed order with canonical item and box references', () => {
+  const storage = new Map();
+  const run = createGame({ storage });
+  run(`state.exp = expForLevel(3); state.gold = 333; state.debt = 7; state.completed = 2;
+    changeStreak(15); selectCustomer(state.queue[0].id); chooseBox('medium'); packItem('pot1');`);
+  const stock = run('JSON.stringify(state.inventory)');
+  const customer = run('JSON.stringify(savedCustomer(state.active))');
+  const restored = createGame({ storage });
+  assert.equal(restored('state.gold'), 333);
+  assert.equal(restored('state.debt'), 7);
+  assert.equal(restored('progression().level'), 3);
+  assert.equal(restored('state.completed'), 2);
+  assert.equal(restored('state.streak'), 15);
+  assert.equal(restored('JSON.stringify(state.inventory)'), stock);
+  assert.equal(restored('JSON.stringify(savedCustomer(state.active))'), customer);
+  assert.equal(restored("state.boxType === BOXES.find(box => box.id === 'medium')"), true);
+  assert.equal(restored("state.box[0] === ITEMS.find(item => item.id === 'pot1')"), true);
+  assert.equal(restored("$('orderDialog').open"), true);
+  assert.equal(restored("$('packingView').hidden"), false);
+  restored("chooseBox('medium')");
+  assert.equal(restored('state.box.length'), 1);
+  assert.equal(restored('JSON.stringify(state.inventory)'), stock);
+  restored('backToBoxes(); backToCustomers()');
+  const selection = createGame({ storage });
+  selection('selectCustomer(state.queue[0].id)');
+  const reselected = createGame({ storage });
+  assert.equal(reselected("$('boxSelection').hidden"), false);
+  assert.equal(reselected('state.box.length'), 0);
+  assert.equal(reselected('state.inventory.pot1'), JSON.parse(stock).pot1 + 1);
+  assert.equal(reselected('new Set([...state.queue.map(customer => customer.id), state.active.id, generateCustomer().id]).size'),
+    reselected('state.queue.length + 2'));
+});
+
+test('reloading after a delivery preserves rewards once and resumes the merchant, cart and discount without rerolling', () => {
+  const storage = new Map();
+  const run = createGame({ storage });
+  run(`state.exp = expForLevel(5); changeStreak(14); state.completed = 4;
+    selectCustomer(state.queue[0].id); chooseBox('small');
+    state.active.needs = [{attr:'hp', target:10, prio:1}]; packItem('pot1'); send();`);
+  const gold = run('state.gold');
+  const stock = run('JSON.stringify(state.inventory)');
+  const offers = run('JSON.stringify(state.shopOffers)');
+  const shop = createGame({ storage });
+  assert.equal(shop('state.gold'), gold);
+  assert.equal(shop('JSON.stringify(state.inventory)'), stock);
+  assert.equal(shop('state.streak'), 15);
+  assert.equal(shop('state.activeDiscount'), 15);
+  assert.equal(shop('JSON.stringify(state.shopOffers)'), offers);
+  assert.equal(shop('state.showingResult'), false);
+  assert.equal(shop("$('shopDialog').open"), true);
+  shop("send(); addToCart('dag'); addToCart('bandage')");
+  const cart = shop('JSON.stringify(state.cart)');
+  const total = shop('cartTotal()');
+  const cartReload = createGame({ storage });
+  assert.equal(cartReload('JSON.stringify(state.cart)'), cart);
+  assert.equal(cartReload('state.gold'), gold);
+  assert.equal(cartReload('JSON.stringify(state.shopOffers)'), offers);
+  assert.equal(cartReload('state.activeDiscount'), 15);
+  cartReload('checkout()');
+  const bought = createGame({ storage });
+  assert.equal(bought('state.gold'), gold - total);
+  assert.equal(bought('cartQuantity()'), 0);
+  assert.equal(bought('state.activeDiscount'), 15);
+  bought('finishShopping()');
+  const home = createGame({ storage });
+  assert.equal(home('state.shopping'), false);
+  assert.equal(home('state.activeDiscount'), null);
+  assert.equal(home('state.shopOffers.length'), 0);
+});
+
+test('offline arrivals honor exact 30-minute boundaries, retain partial progress and cannot bank arrivals beyond capacity', () => {
+  const storage = new Map();
+  let now = 1_700_000_000_000;
+  const options = { storage, now: () => now };
+  const run = createGame(options);
+  run('state.queue = []; render()');
+  now += 1_799_000;
+  const before = createGame(options);
+  assert.equal(before('state.queue.length'), 0);
+  assert.equal(before('state.spawnT'), 1);
+  now += 1_000;
+  const first = createGame(options);
+  assert.equal(first('state.queue.length'), 1);
+  assert.equal(first('state.spawnT'), 1800);
+  const repeated = createGame(options);
+  assert.equal(repeated('state.queue.length'), 1);
+  now -= 60_000;
+  const rollback = createGame(options);
+  assert.equal(rollback('state.queue.length'), 1);
+  assert.equal(rollback('state.spawnT'), 1800);
+  now += 30 * 24 * 60 * 60 * 1000;
+  const full = createGame(options);
+  assert.equal(full('state.queue.length'), 4);
+  assert.equal(full('state.spawnT'), 1800);
+  full("selectCustomer(state.queue[0].id); chooseBox('small'); send()");
+  const after = createGame(options);
+  assert.equal(after('state.queue.length'), 3);
+  assert.equal(after('state.spawnT'), 1800);
+  now += 1_799_000;
+  const waiting = createGame(options);
+  assert.equal(waiting('state.queue.length'), 3);
+  now += 1_000;
+  assert.equal(createGame(options)('state.queue.length'), 4);
+});
+
+test('background lifecycle events catch up elapsed time and preserve an active order and its reserved return place', () => {
+  const storage = new Map();
+  let now = 1_700_000_000_000;
+  const options = { storage, now: () => now };
+  const run = createGame(options);
+  run(`selectCustomer(state.queue[0].id); chooseBox('small'); packItem('pot1');
+    state.queue.pop(); render(); document.hidden = true; document.listeners.visibilitychange();`);
+  now += 24 * 60 * 60 * 1000;
+  run('document.hidden = false; document.listeners.visibilitychange(); window.listeners.pagehide()');
+  const restored = createGame(options);
+  assert.equal(restored('state.queue.length'), 3);
+  assert.equal(restored('state.box.length'), 1);
+  assert.equal(restored('state.inventory.pot1'), 4);
+  restored('backToBoxes(); backToCustomers()');
+  assert.equal(restored('state.queue.length'), 4);
+  assert.equal(restored('state.inventory.pot1'), 5);
+  restored("selectCustomer(state.queue[0].id); chooseBox('small'); send(); $('next').onclick()");
+  now += 1_800_000;
+  restored('intervals[0]()');
+  assert.equal(restored('state.queue.length'), 4);
+  assert.equal(createGame(options)('state.queue.length'), 4);
+});
+
+test('invalid or incompatible saves are reported and never overwritten by a fresh session', () => {
+  const seed = new Map();
+  const run = createGame({ storage: seed });
+  const key = run('SAVE_KEY');
+  const valid = seed.get(key);
+  const mutations = [
+    () => '{broken',
+    data => { data.version++; },
+    data => { data.state.gold = -1; },
+    data => { data.state.inventory.unknown = 3; },
+    data => { data.state.queue[0].name = '<img src=x onerror=alert(1)>'; },
+    data => { data.state.queue.push(data.state.queue[0]); },
+    data => { data.state.box = ['pot1']; },
+    data => { data.state.pendingDiscounts = [15]; },
+  ];
+  for (const mutate of mutations) {
+    const data = JSON.parse(valid);
+    const raw = mutate(data) || JSON.stringify(data);
+    const storage = new Map([[key, raw]]);
+    const errors = [];
+    const broken = createGame({ storage, console: { error: (...args) => errors.push(args) } });
+    broken('render(); window.listeners.pagehide()');
+    assert.equal(storage.get(key), raw);
+    assert.equal(errors.length, 1);
+    assert.equal(broken('savingBlocked'), true);
+    assert.match(broken("$('saveStatus').textContent"), /nicht geladen/);
+    assert.match(broken("$('orderSaveStatus').textContent"), /nicht gespeichert/);
+  }
+});
+
+test('storage access and write failures are visible, and writing resumes after storage becomes available', () => {
+  let unavailable = true;
+  const storage = new Map();
+  const errors = [];
+  const run = createGame({
+    console: { error: (...args) => errors.push(args) },
+    localStorage: {
+      getItem: key => storage.get(key) ?? null,
+      setItem(key, value) { if (unavailable) throw new Error('Storage quota'); storage.set(key, value); },
+    },
+  });
+  run("selectCustomer(state.queue[0].id); chooseBox('small'); packItem('pot1')");
+  assert.equal(run('state.box.length'), 1);
+  assert.match(run("$('saveStatus').textContent"), /Speichern fehlgeschlagen/);
+  assert.equal(errors.length, 1);
+  unavailable = false;
+  run('render()');
+  assert.match(run("$('saveStatus').textContent"), /Automatisch lokal gespeichert/);
+  assert.equal(createGame({ storage })('state.box.length'), 1);
+  let writes = 0;
+  const denied = createGame({
+    console: { error() {} },
+    localStorage: {
+      getItem(key) { if (key === 'lootboxPacker.save') throw new Error('Storage denied'); return null; },
+      setItem() { writes++; },
+    },
+  });
+  assert.equal(denied('savingBlocked'), true);
+  assert.equal(writes, 0);
+});
+
+test('a stale tab stops saving when another tab changes or deletes the local save', () => {
+  const storage = new Map();
+  const run = createGame({ storage });
+  const saved = storage.get(run('SAVE_KEY'));
+  run("window.listeners.storage({key: 'soundEnabled'})");
+  assert.equal(run('savingBlocked'), false);
+  run('window.listeners.storage({key: SAVE_KEY}); state.gold = 123; render(); window.listeners.pagehide()');
+  assert.equal(storage.get(run('SAVE_KEY')), saved);
+  assert.match(run("$('saveStatus').textContent"), /anderen Tab/);
+});
 
 test('merchant capacity grows independently of item unlocks and always includes the weakest item for every need', () => {
   const run = createGame();
@@ -374,13 +584,13 @@ test('boxes count each item as one slot and apply neutral or magical modifiers',
   assert.equal(run('rewardFor(1, state.active).item'), null);
 });
 
-test('merchant pauses customers, blocks selection, and returns after exactly five deliveries each round', () => {
+test('merchant blocks selection and returns after exactly five deliveries each round', () => {
   const run = createShoppingGame();
-  run('globalThis.initialTime = state.queue[0].timeLeft; tick(10); selectCustomer(state.queue[0].id);');
-  assert.equal(run('state.queue[0].timeLeft'), run('initialTime'));
+  run('globalThis.customers = JSON.stringify(state.queue); tick(10); selectCustomer(state.queue[0].id);');
+  assert.equal(run('JSON.stringify(state.queue)'), run('customers'));
   assert.equal(run('state.active'), null);
   run('finishShopping(); tick(1);');
-  assert.equal(run('state.queue[0].timeLeft'), run('initialTime - 1'));
+  assert.equal(run('JSON.stringify(state.queue)'), run('customers'));
   for (let cycle = 0; cycle < 2; cycle++) {
     for (let i = 1; i <= 5; i++) {
       run("state.queue = [generateCustomer()]; selectCustomer(state.queue[0].id); chooseBox('small'); send();");
@@ -432,14 +642,14 @@ test('restock advances only missing gold and debt is deducted from rewards witho
 
 test('order flow supports back navigation, restores items and reserves a place for the active customer', () => {
   const run = createGame();
-  run(`globalThis.id = state.queue[0].id; globalThis.time = state.queue[0].timeLeft;
+  run(`globalThis.id = state.queue[0].id; globalThis.customer = JSON.stringify(state.queue[0]);
     globalThis.offer = JSON.stringify(state.queue[0].itemReward); selectCustomer(id);`);
   assert.equal(run("$('orderDialog').open"), true);
   assert.equal(run("$('boxSelection').hidden"), false);
   assert.equal(run("$('packingView').hidden"), true);
   run(`tick(10); chooseBox('small'); packItem('pot1');`);
-  assert.equal(run('state.active.timeLeft'), run('time'));
-  assert.equal(run('state.queue.length'), 2);
+  assert.equal(run('JSON.stringify(state.active)'), run('customer'));
+  assert.equal(run('state.queue.length'), 3);
   assert.equal(run("$('packingView').hidden"), false);
   assert.equal(run('state.inventory.pot1'), 4);
   run("$('backToBoxes').onclick()");
@@ -451,11 +661,11 @@ test('order flow supports back navigation, restores items and reserves a place f
   run("$('backToCustomers').onclick()");
   assert.equal(run("$('orderDialog').open"), false);
   assert.equal(run('state.active'), null);
-  assert.equal(run('state.queue.length'), 3);
+  assert.equal(run('state.queue.length'), 4);
   assert.equal(run('state.queue[0].id'), run('id'));
-  assert.equal(run('state.queue[0].timeLeft'), run('time'));
+  assert.equal(run('JSON.stringify(state.queue[0])'), run('customer'));
   run('tick(1)');
-  assert.equal(run('state.queue[0].timeLeft'), run('time - 1'));
+  assert.equal(run('JSON.stringify(state.queue[0])'), run('customer'));
 });
 
 test('escape follows the same back steps and submitting closes the order overlay before showing the merchant', () => {
@@ -589,7 +799,7 @@ test('level gates hold for shop, checkout and boxes and roadmap reflects the sam
   assert.equal(run('state.boxType'), null);
   run("state.exp = expForLevel(3); chooseBox('medium');");
   assert.equal(run('state.boxType.id'), 'medium');
-  assert.equal(run('queueCapacity()'), 4);
+  assert.equal(run('queueCapacity()'), 5);
   run("chooseBox('magic')");
   assert.equal(run('state.boxType.id'), 'medium');
   run("state.exp = expForLevel(4); chooseBox('magic'); renderRoadmap();");
@@ -597,7 +807,7 @@ test('level gates hold for shop, checkout and boxes and roadmap reflects the sam
   assert.match(run("$('roadmap').innerHTML"), /Level 4 · Freigeschaltet · Aktuell/);
   assert.match(run("$('roadmap').innerHTML"), /Level 5 · Gesperrt/);
   run('state.exp = expForLevel(6)');
-  assert.equal(run('queueCapacity()'), 5);
+  assert.equal(run('queueCapacity()'), 6);
 });
 
 test('generated customers and reward items obey level gates and increased queue capacity fills naturally', () => {
@@ -608,30 +818,27 @@ test('generated customers and reward items obey level gates and increased queue 
       CUSTOMER_TIERS.find(tier => tier.id === customer.tier).level <= progression().level &&
       isUnlocked(customer.itemReward.item))`), true);
   }
-  run('state.exp = 0; globalThis.beforeTime = state.queue[0].timeLeft; openRoadmap(); tick(1);');
-  assert.equal(run('state.queue[0].timeLeft'), run('beforeTime'));
-  run("$('closeRoadmap').onclick(); state.exp = expForLevel(3); tick(1);");
+  run('state.exp = expForLevel(3); openRoadmap(); tick(SPAWN_INTERVAL - 1);');
   assert.equal(run('state.queue.length'), 4);
+  run("tick(1); $('closeRoadmap').onclick();");
+  assert.equal(run('state.queue.length'), 5);
 });
 
-test('departing customers each cost one point regardless of tier, active customers are protected, and points stop at zero', () => {
+test('waiting and active customers never expire or cost streak points during long absences', () => {
   const run = createGame();
   run(`state.exp = expForLevel(7); state.streak = 5;
-    selectCustomer(state.queue[0].id); state.active.timeLeft = 0.1;
+    selectCustomer(state.queue[0].id);
     state.queue = ['hero', 'demigod'].map(id => {
       globalThis.rollCustomerTier = () => CUSTOMER_TIERS.find(tier => tier.id === id);
-      return {...generateCustomer(), timeLeft: 0.5};
+      return generateCustomer();
     });
-    tick(1);`);
-  assert.equal(run('state.streak'), 3);
-  assert.ok(run('state.active'));
-  assert.equal(run('state.active.timeLeft'), 0.1);
-  assert.equal(run("$('streakPoints').textContent"), 3);
-  run(`state.queue = [{...generateCustomer(), timeLeft: 0.5}];
-    state.spawnT = 100; tick(1); tick(1);`);
-  assert.equal(run('state.streak'), 2);
-  run(`state.queue = Array.from({length: 4}, () => ({...generateCustomer(), timeLeft: 0.1})); tick(1);`);
-  assert.equal(run('state.streak'), 0);
+    globalThis.active = JSON.stringify(state.active);
+    globalThis.waiting = JSON.stringify(state.queue);
+    tick(7 * 24 * 60 * 60);`);
+  assert.equal(run('state.streak'), 5);
+  assert.equal(run('JSON.stringify(state.active)'), run('active'));
+  assert.equal(run('JSON.stringify(state.queue.slice(0, 2))'), run('waiting'));
+  assert.equal(run('state.queue.length + 1'), run('queueCapacity()'));
 });
 
 test('a delivery earns its checkpoint package automatically and falling below then regaining it cannot farm rewards', () => {
@@ -711,11 +918,11 @@ test('earned discounts apply immediately to the next merchant, cover multiple ch
   assert.equal(run('state.pendingDiscounts.length'), 0);
 });
 
-test('checkpoint details distinguish pending and earned rewards and pause timers without spending a bonus', () => {
+test('checkpoint details distinguish pending and earned rewards without spending a bonus', () => {
   const run = createGame();
-  run(`globalThis.beforeTime = state.queue[0].timeLeft; openStreak(15); tick(20);`);
+  run(`globalThis.customers = JSON.stringify(state.queue); openStreak(15); tick(20);`);
   assert.equal(run("$('streakDialog').open"), true);
-  assert.equal(run('state.queue[0].timeLeft'), run('beforeTime'));
+  assert.equal(run('JSON.stringify(state.queue)'), run('customers'));
   assert.match(run("$('streakRewards').innerHTML"), /selected-checkpoint/);
   assert.match(run("$('streakRewards').innerHTML"), /10 % Rabatt während des gesamten nächsten Händlerbesuchs/);
   assert.equal(run('state.claimedCheckpoints.length'), 0);
@@ -724,7 +931,7 @@ test('checkpoint details distinguish pending and earned rewards and pause timers
   assert.match(run("$('streakCheckpoints').innerHTML"), /checkpoint claimed/);
   assert.equal(run('state.pendingDiscounts.length'), 1);
   run("$('closeStreak').onclick(); tick(1);");
-  assert.equal(run('state.queue[0].timeLeft'), run('beforeTime - 1'));
+  assert.equal(run('JSON.stringify(state.queue)'), run('customers'));
 });
 
 test('audio is lazy, reuses one context and creates short fading notes only after interaction', async () => {
@@ -823,8 +1030,8 @@ test('game sounds follow committed actions and customer changes, not rendering o
   assert.deepEqual(JSON.parse(run('JSON.stringify(sounds)')), ['arrival']);
   run("selectCustomer(state.queue[0].id); chooseBox('small'); packItem('pot1'); packItem('sword');");
   assert.deepEqual(JSON.parse(run('JSON.stringify(sounds.slice(-3))')), ['select', 'box', 'pack']);
-  run(`sounds.length = 0; state.queue = [{...generateCustomer(), timeLeft:0.1}]; state.spawnT = 0; tick(1);`);
-  assert.deepEqual(JSON.parse(run('JSON.stringify(sounds)')), ['leave']);
+  run(`sounds.length = 0; state.queue = [generateCustomer()]; state.spawnT = SPAWN_INTERVAL; tick(1);`);
+  assert.deepEqual(JSON.parse(run('JSON.stringify(sounds)')), []);
 
   const shop = createShoppingGame();
   shop(`globalThis.sounds = []; sfx.play = name => sounds.push(name);
