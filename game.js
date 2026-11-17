@@ -649,12 +649,12 @@ const capacity = () => state.boxType ? state.boxType.slots : 0;
 
 const usedSlots = () => state.box.length;
 
-function totals() {
+function totals(previewItem = null) {
   const t = {};
   if (state.boxType) {
     for (const [attr, value] of Object.entries(state.boxType.modifiers)) t[attr] = value;
   }
-  for (const it of state.box) {
+  for (const it of previewItem ? [...state.box, previewItem] : state.box) {
     for (const [attr, value] of Object.entries(it.stats)) t[attr] = (t[attr] || 0) + value;
   }
   return t;
@@ -922,12 +922,14 @@ function tick(dt) {
   }
 }
 
-function needsHtml(c, t) {
+function needsHtml(c, t, preview = t) {
   return c.needs.map(n => {
     const have = Math.max(0, t[n.attr] || 0);
-    const pct = Math.min(100, have / n.target * 100);
+    const projected = Math.max(0, preview[n.attr] || 0);
+    const pct = Math.min(100, projected / n.target * 100);
+    const values = projected === have ? `${have}/${n.target}` : `${have}/${n.target} → <strong>${projected}/${n.target}</strong>`;
     return `<div class="need">
-      <div class="need-head"><span>${ATTRS[n.attr].icon} ${ATTRS[n.attr].name} <span class="prio p${n.prio}">${PRIO_LABEL[n.prio]}</span></span><span>${have}/${n.target}</span></div>
+      <div class="need-head"><span>${ATTRS[n.attr].icon} ${ATTRS[n.attr].name} <span class="prio p${n.prio}">${PRIO_LABEL[n.prio]}</span></span><span>${values}</span></div>
       <div class="bar"><div style="width:${pct}%"></div></div>
     </div>`;
   }).join('');
@@ -1111,9 +1113,18 @@ function openBoxSlot(position) {
 
 function renderInventory() {
   const customer = state.active;
-  $('packingNeeds').hidden = !customer || !state.boxType;
-  $('packingNeedValues').innerHTML = $('packingNeeds').hidden ? '' : needsHtml(customer, totals());
   const owned = ITEMS.filter(it => state.inventory[it.id] > 0);
+  const item = owned.find(it => it.id === selectedPackingItem);
+  const previewItem = item && isUnlocked(item) && selectedSlot !== null
+    && selectedSlot < capacity() && !state.boxPositions.includes(selectedSlot) ? item : null;
+  $('packingNeeds').hidden = !customer || !state.boxType;
+  $('packingNeedsTitle').textContent = previewItem ? 'Kundenwünsche · Vorschau' : 'Kundenwünsche';
+  if ($('packingNeeds').hidden) {
+    $('packingNeedValues').innerHTML = '';
+  } else {
+    const current = totals();
+    $('packingNeedValues').innerHTML = needsHtml(customer, current, previewItem ? totals(previewItem) : current);
+  }
   $('inventory').innerHTML = owned.length
     ? owned.map(it => itemIconButton(it, state.inventory[it.id], 'data-pack-item', selectedPackingItem === it.id)).join('')
     : `<div class="empty">${state.shopping ? 'Dein Lager ist leer. Kaufe Vorräte im Shop.' : 'Dein Lager ist leer. Bestelle Nachschub im Inventar-Menü oder nutze den Notfall-Restock.'}</div>`;
@@ -1122,7 +1133,6 @@ function renderInventory() {
     renderInventory();
     $('inventory').querySelector(`[data-pack-item="${selectedPackingItem}"]`)?.focus();
   });
-  const item = owned.find(it => it.id === selectedPackingItem);
   $('packingItemDetails').innerHTML = item ? `${itemInfoHtml(item)}
     ${isUnlocked(item) ? '<button id="confirmPackItem" class="primary">Einpacken</button>' : `<p>Ab Level ${item.level} verwendbar.</p>`}`
     : '<p class="hint">Tippe auf ein Item, um seine Werte zu sehen.</p>';

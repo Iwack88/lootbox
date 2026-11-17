@@ -162,6 +162,36 @@ test('individual slots select icons for details, retain their positions after re
   assert.equal(restored('state.boxPositions.length'), 0);
 });
 
+test('tapping different inventory items previews needs without changing the box or save until confirmed', () => {
+  const storage = new Map();
+  const run = createMilestoneGame({ storage });
+  run(`selectCustomer(state.queue[0].id); chooseBox('small');
+    state.active.needs = [{attr:'hp', target:20, prio:2}, {attr:'melee', target:16, prio:1}];
+    packItem('pot1', 0);
+    globalThis.icons = ['pot1', 'dag'].map(packItem => ({ dataset: { packItem } }));
+    $('inventory').querySelectorAll = () => icons;
+    openBoxSlot(1);`);
+  const key = run('SAVE_KEY');
+  const saved = storage.get(key);
+  run('icons[0].onclick()');
+  assert.match(run("$('packingNeedsTitle').textContent"), /Vorschau/);
+  assert.match(run("$('packingNeedValues').innerHTML"), /10\/20 → <strong>20\/20<\/strong>/);
+  assert.match(run("$('packingNeedValues').innerHTML"), /width:100%/);
+  run('icons[1].onclick()');
+  assert.doesNotMatch(run("$('packingNeedValues').innerHTML"), /20\/20/);
+  assert.match(run("$('packingNeedValues').innerHTML"), /0\/16 → <strong>8\/16<\/strong>/);
+  assert.equal(storage.get(key), saved);
+  assert.equal(run('state.box.length'), 1);
+  assert.equal(run('state.inventory.dag'), 5);
+  run("$('closePackingInventory').onclick(); openBoxSlot(1)");
+  assert.doesNotMatch(run("$('packingNeedValues').innerHTML"), /→/);
+  assert.equal(storage.get(key), saved);
+  run("icons[1].onclick(); $('confirmPackItem').onclick(); openBoxSlot(2)");
+  assert.match(run("$('packingNeedValues').innerHTML"), /8\/16/);
+  assert.doesNotMatch(run("$('packingNeedValues').innerHTML"), /→/);
+  assert.equal(run('state.inventory.dag'), 4);
+});
+
 test('old saves restore packed items in sequential slots and invalid slot positions cannot overwrite a save', () => {
   const storage = new Map();
   const run = createMilestoneGame({ storage });
