@@ -29,6 +29,7 @@ small { opacity: .7; font-weight: 400; }
 .box-item .kg { opacity: .8; }
 .empty { text-align: center; opacity: .5; font-size: 14px; padding: 10px; }
 .hint { margin: 0 0 10px; font-size: 13px; opacity: .8; }
+.reward-offer { display: block; margin-top: 6px; font-size: 12px; line-height: 1.5; color: #ffd166; }
 .preview { margin: 10px 0; font-size: 14px; text-align: center; opacity: .85; }
 .preview .item-cost { color: #ff6b6b; }
 .preview .net-gold { color: #4cc38a; }

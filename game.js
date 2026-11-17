@@ -59,6 +59,11 @@ const RARITY = {
 };
 const QUEUE_SIZE = 3;
 const SPAWN_INTERVAL = 5;
+const ITEM_REWARDS = [
+  { quality: 0.3, rarities: ['common', 'rare', 'epic'], ids: ['pot1', 'dag', 'shield', 'wand'] },
+  { quality: 0.6, rarities: ['rare', 'epic'], ids: ['pot2', 'sword'] },
+  { quality: 0.9, rarities: ['epic'], ids: ['pot3', 'plate'] },
+];
 
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 
@@ -77,7 +82,12 @@ function generateCustomer() {
   const def = RARITY[rarity];
   const base = pick(rarity === 'epic' ? EPIC_CLASSES : CLASSES);
   const needs = base.needs.map(n => ({ ...n, target: Math.max(5, Math.round(n.target * def.scale * (0.8 + Math.random() * 0.4) / 5) * 5) }));
-  return { id: nextId++, name: pick(NAMES), cls: base.cls, icon: base.icon, needs, rarity, timeLeft: def.time, maxTime: def.time };
+  const itemRewards = ITEM_REWARDS.filter(tier => tier.rarities.includes(rarity))
+    .map(tier => {
+      const id = pick(tier.ids);
+      return { quality: tier.quality, item: ITEMS.find(it => it.id === id) };
+    });
+  return { id: nextId++, name: pick(NAMES), cls: base.cls, icon: base.icon, needs, rarity, itemRewards, timeLeft: def.time, maxTime: def.time };
 }
 
 const state = { gold: 100, exp: 0, inventory: {}, boxType: null, box: [], active: null, queue: [], spawnT: 0 };
@@ -106,7 +116,9 @@ function quality() {
 
 const rewardFor = (q, c) => {
   const m = RARITY[c.rarity].mult;
-  return { gold: Math.round((10 + q * 30) * m), exp: Math.round((5 + q * 15) * m) };
+  const eligible = c.itemRewards.filter(reward => q >= reward.quality);
+  const item = eligible.length ? eligible[eligible.length - 1].item : null;
+  return { gold: Math.round((10 + q * 30) * m), exp: Math.round((5 + q * 15) * m), item };
 };
 
 function returnBoxToInventory() {
@@ -173,6 +185,7 @@ function send() {
   const r = rewardFor(q, state.active);
   state.gold += r.gold;
   state.exp += r.exp;
+  if (r.item) state.inventory[r.item.id] = (state.inventory[r.item.id] || 0) + 1;
   state.box = [];
   state.boxType = null;
   state.active = null;
@@ -181,6 +194,7 @@ function send() {
     <h1>${label}</h1>
     <div>Erfüllung: ${Math.round(q * 100)}%</div>
     <div>💰 +${r.gold} &nbsp; ⭐ +${r.exp}</div>
+    <div>${r.item ? `Inventar: +1 ${r.item.icon} ${r.item.name}` : 'Keine Itembelohnung (ab 30% Erfüllung)'}</div>
     <button class="primary" id="next">Weiter</button>`;
   $('result').classList.remove('hidden');
   $('next').onclick = () => {
@@ -226,13 +240,19 @@ function needsHtml(c, t) {
   }).join('');
 }
 
+function itemRewardsHtml(c) {
+  return `<span class="reward-offer">Itembelohnung (1 Item): ${c.itemRewards.map(reward =>
+    `ab ${Math.round(reward.quality * 100)}%: ${reward.item.icon} ${reward.item.name}`
+  ).join(' · ')}. Die höchste erreichte Stufe zählt.</span>`;
+}
+
 function renderQueue() {
   $('queue').innerHTML = state.queue.length ? state.queue.map(c => {
     const needs = c.needs.map(n => `<span class="need-icons">${ATTRS[n.attr].icon.repeat(n.prio)}</span>`).join('');
     const m = RARITY[c.rarity].mult;
     return `<button class="queue-item r-${c.rarity}" data-cid="${c.id}">
       <span class="ico">${c.icon}</span>
-      <span class="txt">${c.name} <small>${c.cls}</small><span class="needs">${needs}</span></span>
+      <span class="txt">${c.name} <small>${c.cls}</small><span class="needs">${needs}</span>${itemRewardsHtml(c)}</span>
       <span class="mult">${m > 1 ? '×' + m : ''}</span>
       <span class="secs">${Math.ceil(c.timeLeft)}s</span>
       <span class="timer"><div style="width:${Math.max(0, c.timeLeft / c.maxTime * 100)}%"></div></span>
@@ -248,7 +268,7 @@ function render() {
   $('exp').textContent = state.exp;
 
   $('customer').innerHTML = c
-    ? `<div class="cust-name r-${c.rarity}">${c.icon} ${c.name} <small>${c.cls} · ${RARITY[c.rarity].label}</small></div>` + needsHtml(c, totals())
+    ? `<div class="cust-name r-${c.rarity}">${c.icon} ${c.name} <small>${c.cls} · ${RARITY[c.rarity].label}</small></div>` + needsHtml(c, totals()) + itemRewardsHtml(c)
     : '<div class="empty">Wähle einen Kunden aus der Liste</div>';
 
   const used = usedWeight();
@@ -266,7 +286,8 @@ function render() {
     const netGold = r.gold - itemCost;
     $('preview').innerHTML = `Aktuell: ${Math.round(q * 100)}% → 💰 ${r.gold}  ⭐ ${r.exp}<br>
       <span class="item-cost">Itemkosten: ${itemCost} 💰</span>
-      <span class="net-gold${netGold < 0 ? ' loss' : ''}"> · Netto: ${netGold >= 0 ? '+' : ''}${netGold} 💰</span>`;
+      <span class="net-gold${netGold < 0 ? ' loss' : ''}"> · Netto: ${netGold >= 0 ? '+' : ''}${netGold} 💰</span><br>
+      ${r.item ? `Itembelohnung: +1 ${r.item.icon} ${r.item.name}` : 'Itembelohnung ab 30% Erfüllung'}`;
   } else {
     $('preview').textContent = '';
   }

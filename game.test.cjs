@@ -80,3 +80,48 @@ test('box and customer switches return items; sending consumes only packed items
   run('send()');
   assert.equal(run('state.gold'), run('expectedGold'));
 });
+
+test('item reward thresholds respect rarity and upgrade rather than accumulate', () => {
+  const run = createGame();
+  for (const [rarity, levels] of [['common', 1], ['rare', 2], ['epic', 3]]) {
+    run(`globalThis.rollRarity = () => '${rarity}'; globalThis.customer = generateCustomer();`);
+    assert.equal(run('customer.itemRewards.length'), levels);
+    assert.equal(run('rewardFor(0, customer).item'), null);
+    assert.equal(run('rewardFor(0.299999, customer).item'), null);
+    for (let i = 0; i < levels; i++) {
+      assert.equal(run(`rewardFor(customer.itemRewards[${i}].quality, customer).item.id`),
+        run(`customer.itemRewards[${i}].item.id`));
+    }
+    assert.equal(run('rewardFor(1, customer).item.id'), run(`customer.itemRewards[${levels - 1}].item.id`));
+  }
+});
+
+test('advertised reward stays fixed and sending grants exactly one item once', () => {
+  const run = createGame();
+  run(`globalThis.rollRarity = () => 'epic';
+    state.queue = [generateCustomer()];
+    selectCustomer(state.queue[0].id);
+    state.active.needs = [{ attr: 'hp', target: 10, prio: 3 }];
+    chooseBox('small');
+    buy('pot1'); packItem('pot1');
+    globalThis.rewardId = rewardFor(quality(), state.active).item.id;
+    globalThis.offer = JSON.stringify(state.active.itemRewards);
+    render(); render();`);
+  assert.equal(run('JSON.stringify(state.active.itemRewards)'), run('offer'));
+  assert.match(run("$('preview').innerHTML"), /Itembelohnung: \+1/);
+  run('send()');
+  assert.equal(run('state.inventory[rewardId]'), 1);
+  assert.equal(run('Object.values(state.inventory).reduce((a, b) => a + b, 0)'), 1);
+  run('send()');
+  assert.equal(run('state.inventory[rewardId]'), 1);
+});
+
+test('empty or irrelevant boxes grant no items', () => {
+  const run = createGame();
+  run(`selectCustomer(state.queue[0].id); chooseBox('small'); send();`);
+  assert.equal(run('Object.values(state.inventory).reduce((a, b) => a + b, 0)'), 0);
+  run(`selectCustomer(state.queue[0].id);
+    state.active.needs = [{ attr: 'hp', target: 10, prio: 3 }];
+    chooseBox('small'); buy('wand'); packItem('wand'); send();`);
+  assert.equal(run('Object.values(state.inventory).reduce((a, b) => a + b, 0)'), 0);
+});
