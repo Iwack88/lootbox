@@ -6,6 +6,7 @@ const vm = require('node:vm');
 function createGame() {
   const elements = new Map();
   const context = vm.createContext({
+    matchMedia: () => ({ matches: false, addEventListener() {} }),
     document: {
       querySelector: () => null,
       getElementById(id) {
@@ -181,4 +182,16 @@ test('restock advances only missing gold and debt is deducted from rewards witho
   assert.equal(run('state.gold'), 7);
   run("$('next').onclick(); emergencyRestock()");
   assert.equal(run('state.debt'), 13);
+});
+
+test('desktop selection keeps panels visible while mobile retains auto-collapse', () => {
+  const run = createGame();
+  run(`finishShopping(); selectCustomer(state.queue[0].id);`);
+  assert.equal(run("$('queueCard').open"), false);
+  run(`desktopLayout.matches = true; openDesktopPanels();`);
+  assert.equal(run("$('queueCard').open"), true);
+  run('selectCustomer(state.queue[0].id)');
+  for (const id of ['queueCard', 'custCard', 'pickCard', 'boxCard', 'inventoryCard', 'shopCard']) {
+    assert.equal(run(`$('${id}').open`), true);
+  }
 });

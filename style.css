@@ -94,3 +94,21 @@ button.primary:disabled { opacity: .4; }
 button.fab { position: fixed; right: 16px; bottom: max(16px, env(safe-area-inset-bottom)); width: auto; padding: 14px 22px; border-radius: 999px; box-shadow: 0 4px 14px rgba(0,0,0,.5); z-index: 5; }
 body { padding-bottom: 90px; }
 .queue-item .txt .needs { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 3px; }
+.game-layout, .panel-column { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.card, .txt { min-width: 0; }
+.shop-item .cost, .queue-item .secs, .box-item .kg { flex-shrink: 0; }
+.need-head { flex-wrap: wrap; gap: 4px; }
+
+@media (min-width: 900px) {
+  body { max-width: 1800px; padding: 24px 24px 90px; }
+  header { justify-content: flex-start; gap: 32px; }
+  .merchant-status { max-width: 480px; }
+  .game-layout { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 18px; }
+  .panel-column { gap: 18px; }
+  summary { flex-wrap: wrap; gap: 4px; }
+  #autoToggle { display: none; }
+}
+
+@media (min-width: 1280px) {
+  .game-layout { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}

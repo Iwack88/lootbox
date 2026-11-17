@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1b1a2e">
 <meta http-equiv="Cache-Control" content="no-cache">
 <title>Lootbox Packer</title>
-<link rel="stylesheet" href="style.css?v=7">
+<link rel="stylesheet" href="style.css?v=8">
 </head>
 <body>
 <header>
@@ -20,11 +20,15 @@
   <span id="debtInfo"></span>
 </div>
 
+<main class="game-layout">
+<section class="panel-column" aria-label="Kundenliste">
 <details class="card" id="queueCard" open>
   <summary>Kunden <small id="queueInfo"></small><span class="auto" id="autoToggle"></span></summary>
   <div id="queue" class="queue"></div>
 </details>
+</section>
 
+<section class="panel-column" aria-label="Auftrag packen">
 <details class="card" id="custCard" open>
   <summary>Aktiver Kunde</summary>
   <div id="customer"></div>
@@ -41,7 +45,9 @@
   <div id="box" class="box"></div>
   <div id="preview" class="preview"></div>
 </details>
+</section>
 
+<section class="panel-column" aria-label="Vorräte">
 <details class="card" id="inventoryCard" open>
   <summary>Inventar <small id="inventoryInfo"></small></summary>
   <p class="hint">Tippe auf ein Item, um es einzupacken. Entfernte Items gehen zurück ins Lager.</p>
@@ -52,17 +58,21 @@
     <div id="restockResult" role="status"></div>
   </div>
 </details>
+</section>
 
+<section class="panel-column" aria-label="Händler">
 <details class="card" id="shopCard" open>
   <summary>Shop</summary>
   <p id="shopHint" class="hint"></p>
   <div id="shop" class="shop"></div>
   <button id="finishShopping" class="primary">Einkauf beenden</button>
 </details>
+</section>
+</main>
 
 <button id="send" class="primary fab">📦 Absenden</button>
 
 <div id="result" class="overlay hidden"></div>
-<script src="game.js?v=7"></script>
+<script src="game.js?v=8"></script>
 </body>
 </html>

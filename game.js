@@ -1,4 +1,12 @@
 const $ = id => document.getElementById(id);
+const desktopLayout = matchMedia('(min-width: 900px)');
+
+function openDesktopPanels() {
+  if (desktopLayout.matches) {
+    for (const id of ['queueCard', 'custCard', 'pickCard', 'boxCard', 'inventoryCard', 'shopCard']) $(id).open = true;
+  }
+}
+desktopLayout.addEventListener('change', openDesktopPanels);
 
 const ATTRS = {
   hp:    { name: 'Leben',    icon: '❤️' },
@@ -146,7 +154,7 @@ function buy(id) {
 function finishShopping() {
   if (!state.shopping) return;
   state.shopping = false;
-  $('shopCard').open = false;
+  if (!desktopLayout.matches) $('shopCard').open = false;
   $('queueCard').open = true;
   render();
 }
@@ -191,12 +199,13 @@ function selectCustomer(id) {
   else state.queue.splice(i, 1);
   state.active = chosen;
   state.boxType = null;
-  if (autoCollapse) {
+  if (autoCollapse && !desktopLayout.matches) {
     $('queueCard').open = false;
     for (const id of ['custCard', 'pickCard', 'boxCard']) $(id).open = true;
     $('inventoryCard').open = false;
     $('shopCard').open = false;
   }
+  openDesktopPanels();
   render();
 }
 
