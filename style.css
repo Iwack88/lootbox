@@ -16,8 +16,9 @@ header { display: flex; justify-content: space-between; font-size: 18px; }
 .supply-item span { min-width: 0; overflow-wrap: anywhere; }
 .supply-item b { font-size: 13px; white-space: nowrap; }
 .supply-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
-.supply-controls label { font-size: 13px; }
-.supply-controls input { width: 64px; padding: 8px; border: 1px solid #6c63ff; border-radius: 6px; background: #15142a; color: #eee; font: inherit; }
+.quantity-controls { display: flex; align-items: center; gap: 8px; }
+.quantity-controls button { min-width: 44px; min-height: 44px; font-size: 20px; }
+.quantity-controls output { min-width: 24px; text-align: center; font-variant-numeric: tabular-nums; }
 .supply-controls button:disabled { opacity: .45; }
 #supplyDiscount { color: #ffd166; }
 #packingSupply { margin-bottom: 10px; }

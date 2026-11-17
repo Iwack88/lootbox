@@ -114,6 +114,35 @@ function createOrderingGame(options = {}) {
   return createGame({ ...options, legacyMerchant: false });
 }
 
+test('quantity buttons clamp to level limits and update the order price and affordability', () => {
+  const run = createOrderingGame();
+  run(`globalThis.quantityElements = {};
+    $('supplyInventory').querySelector = selector => quantityElements[selector] ||= {};
+    openSupply(); state.gold = 6; adjustOrderQuantity('bandage', 1);`);
+  assert.equal(run('orderDrafts.bandage'), 2);
+  assert.equal(run(`quantityElements['[data-quantity="bandage"]'].textContent`), 2);
+  assert.equal(run(`quantityElements['[data-item="bandage"]'].textContent`), 'Bestellen · 6 Gold');
+  assert.equal(run(`quantityElements['[data-item="bandage"]'].disabled`), false);
+  run("adjustOrderQuantity('bandage', 1)");
+  assert.equal(run(`quantityElements['[data-item="bandage"]'].disabled`), true);
+  run("for (let i=0; i<10; i++) adjustOrderQuantity('bandage', 1)");
+  assert.equal(run('orderDrafts.bandage'), 5);
+  assert.equal(run(`quantityElements['[data-increase="bandage"]'].disabled`), true);
+  run("state.exp = expForLevel(7); adjustOrderQuantity('bandage', 1)");
+  assert.equal(run('orderDrafts.bandage'), 6);
+  run("for (let i=0; i<10; i++) adjustOrderQuantity('bandage', -1)");
+  assert.equal(run('orderDrafts.bandage'), 1);
+  assert.equal(run(`quantityElements['[data-decrease="bandage"]'].disabled`), true);
+  assert.equal(run(`quantityElements['[data-increase="bandage"]'].disabled`), false);
+  run("renderSupply()");
+  assert.doesNotMatch(run("$('supplyInventory').innerHTML"), /<input/);
+  assert.match(run("$('supplyInventory').innerHTML"), /data-decrease="bandage"/);
+  assert.match(run("$('supplyInventory').innerHTML"), /data-increase="bandage"/);
+  run("state.gold = 500; adjustOrderQuantity('bandage', 1); placeOrder('bandage', orderDrafts.bandage)");
+  assert.equal(run('state.orders[0].quantity'), 2);
+  assert.equal(run('state.gold'), 494);
+});
+
 test('one order slot holds a chosen quantity of one item and prices scale per piece', () => {
   const run = createOrderingGame();
   run("openSupply(); placeOrder('bandage', 2)");

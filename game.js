@@ -1066,6 +1066,20 @@ function renderDeliveries() {
   }).join('');
 }
 
+function adjustOrderQuantity(id, delta) {
+  const item = ITEMS.find(entry => entry.id === id);
+  if (!item || !canOrder(item) || ![-1, 1].includes(delta)) return;
+  const quantity = Math.min(orderQuantityLimit(), Math.max(1, (orderDrafts[id] ?? 1) + delta));
+  orderDrafts[id] = quantity;
+  const controls = $('supplyInventory');
+  controls.querySelector(`[data-quantity="${id}"]`).textContent = quantity;
+  controls.querySelector(`[data-decrease="${id}"]`).disabled = quantity === 1;
+  controls.querySelector(`[data-increase="${id}"]`).disabled = quantity === orderQuantityLimit();
+  const button = controls.querySelector(`[data-item="${id}"]`);
+  button.textContent = `Bestellen · ${orderPrice(item, quantity)} Gold`;
+  button.disabled = state.orders.length >= orderCapacity() || orderPrice(item, quantity) > state.gold;
+}
+
 function renderSupply() {
   renderDeliveries();
   if (!$('supplyDialog').open) return;
@@ -1083,21 +1097,20 @@ function renderSupply() {
       <div class="supply-item"><span>${item.icon} ${itemNameHtml(item)}</span><b>Vorrat: ${state.inventory[item.id] || 0}</b></div>
       <small>${itemDetailsHtml(item)}${isUnlocked(item) ? '' : ` · Item ab Level ${item.level}`}</small>
       ${available ? `<div class="supply-controls">
-        <label>Menge <input type="number" inputmode="numeric" min="1" max="${orderQuantityLimit()}" step="1" value="${quantity}" data-quantity="${item.id}" aria-label="Bestellmenge ${item.name}"></label>
+        <div class="quantity-controls" role="group" aria-label="Bestellmenge ${item.name}">
+          <button class="secondary" data-decrease="${item.id}" aria-label="${item.name}: Menge verringern" ${quantity === 1 ? 'disabled' : ''}>−</button>
+          <output data-quantity="${item.id}" aria-live="polite" aria-label="Menge ${item.name}">${quantity}</output>
+          <button class="secondary" data-increase="${item.id}" aria-label="${item.name}: Menge erhöhen" ${quantity === orderQuantityLimit() ? 'disabled' : ''}>+</button>
+        </div>
         <button class="secondary order-item" data-item="${item.id}" ${state.orders.length >= orderCapacity() || price > state.gold ? 'disabled' : ''}>Bestellen · ${price} Gold</button></div>`
       : `<small>${catalog ? `Bestellbar ab Level ${catalog.level}` : 'Nicht bestellbar · Kundenbelohnungen oder Werkstatt'}</small>`}
     </div>`;
   }).join('');
-  $('supplyInventory').querySelectorAll('[data-quantity]').forEach(input => {
-    input.oninput = () => {
-      const quantity = input.valueAsNumber;
-      const item = ITEMS.find(item => item.id === input.dataset.quantity);
-      const valid = Number.isInteger(quantity) && quantity >= 1 && quantity <= orderQuantityLimit();
-      if (valid) orderDrafts[item.id] = quantity;
-      const button = $('supplyInventory').querySelector(`[data-item="${item.id}"]`);
-      button.textContent = valid ? `Bestellen · ${orderPrice(item, quantity)} Gold` : 'Ungültige Menge';
-      button.disabled = !valid || state.orders.length >= orderCapacity() || orderPrice(item, quantity) > state.gold;
-    };
+  $('supplyInventory').querySelectorAll('[data-decrease]').forEach(button => {
+    button.onclick = () => adjustOrderQuantity(button.dataset.decrease, -1);
+  });
+  $('supplyInventory').querySelectorAll('[data-increase]').forEach(button => {
+    button.onclick = () => adjustOrderQuantity(button.dataset.increase, 1);
   });
   $('supplyInventory').querySelectorAll('.order-item').forEach(button => {
     button.onclick = () => placeOrder(button.dataset.item, orderDrafts[button.dataset.item] ?? 1);
