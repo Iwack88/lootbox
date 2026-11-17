@@ -130,6 +130,8 @@ test('individual slots select icons for details, retain their positions after re
   assert.equal((run("$('box').innerHTML").match(/data-slot=/g) || []).length, 3);
   run('openBoxSlot(2)');
   assert.equal(run("$('packingInventoryDialog').open"), true);
+  assert.equal(run("$('packingNeeds').hidden"), false);
+  assert.match(run("$('packingNeedValues').innerHTML"), /Leben.*wichtig.*0\/20/);
   assert.match(run("$('inventory').innerHTML"), /data-pack-item="pot1"/);
   assert.match(run("$('inventory').innerHTML"), /Kleiner Heiltrank, Vorrat: 5/);
   run("selectedPackingItem = 'pot1'; renderInventory()");
@@ -142,6 +144,9 @@ test('individual slots select icons for details, retain their positions after re
   assert.match(run("$('box').innerHTML"), /Slot 3: Kleiner Heiltrank/);
   assert.match(run("$('customer').innerHTML"), /10\/20/);
   assert.match(run("$('preview').innerHTML"), /Aktuell: 50%/);
+  run('openBoxSlot(1)');
+  assert.match(run("$('packingNeedValues').innerHTML"), /Leben.*wichtig.*10\/20/);
+  run("$('closePackingInventory').onclick()");
   run("packItem('dag', 0); packItem('dag', 0); packItem('dag', 3)");
   assert.equal(run('state.box.length'), 2);
   const restored = createMilestoneGame({ storage });

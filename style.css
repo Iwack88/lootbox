@@ -62,6 +62,12 @@ small { opacity: .7; font-weight: 400; }
 .empty-slot { border-style: dashed; color: #b7b3cd; background: #1b1a2e; }
 .item-count { position: absolute; right: 3px; bottom: 2px; padding: 1px 4px; background: #15142a; border-radius: 5px; font-size: 12px; }
 .item-dialog { max-width: 560px; }
+#packingNeeds { position: sticky; top: -20px; z-index: 1; background: #26253f; padding: 8px 0; margin-bottom: 6px; border-bottom: 1px solid #3a3860; }
+#packingNeeds h3 { margin: 0 0 6px; font-size: 14px; }
+#packingNeeds .need { margin-bottom: 5px; }
+#packingNeeds .need:last-child { margin-bottom: 0; }
+#packingNeeds .need-head { font-size: 12px; margin-bottom: 2px; }
+#packingNeeds .bar { height: 7px; }
 .item-details { margin: 12px 0; font-size: 14px; }
 .item-details p { margin: 6px 0; }
 .item-details .primary { margin-top: 6px; }

@@ -1110,6 +1110,9 @@ function openBoxSlot(position) {
 }
 
 function renderInventory() {
+  const customer = state.active;
+  $('packingNeeds').hidden = !customer || !state.boxType;
+  $('packingNeedValues').innerHTML = $('packingNeeds').hidden ? '' : needsHtml(customer, totals());
   const owned = ITEMS.filter(it => state.inventory[it.id] > 0);
   $('inventory').innerHTML = owned.length
     ? owned.map(it => itemIconButton(it, state.inventory[it.id], 'data-pack-item', selectedPackingItem === it.id)).join('')

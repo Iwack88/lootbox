@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1b1a2e">
 <meta http-equiv="Cache-Control" content="no-cache">
 <title>Lootbox Packer</title>
-<link rel="stylesheet" href="style.css?v=29">
+<link rel="stylesheet" href="style.css?v=30">
 </head>
 <body>
 <header>
@@ -99,6 +99,10 @@
     <button id="closePackingInventory" class="secondary">Zurück</button>
   </div>
   <p id="packingSaveStatus" class="hint" role="status" hidden></p>
+  <section id="packingNeeds" aria-labelledby="packingNeedsTitle" hidden>
+    <h3 id="packingNeedsTitle">Kundenwünsche</h3>
+    <div id="packingNeedValues"></div>
+  </section>
   <p class="hint">Wähle ein Item für Details und packe es anschließend ein.</p>
   <div id="inventory" class="icon-grid"></div>
   <div id="packingItemDetails" class="item-details" aria-live="polite"></div>
@@ -231,6 +235,6 @@
 
 <div id="result" class="overlay hidden"></div>
 <script src="sound.js?v=29"></script>
-<script src="game.js?v=29"></script>
+<script src="game.js?v=30"></script>
 </body>
 </html>
