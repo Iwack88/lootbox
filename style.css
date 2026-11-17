@@ -36,6 +36,10 @@ small { opacity: .7; font-weight: 400; }
 .restock-panel .hint { margin: 8px 0; }
 #restockResult { font-size: 13px; color: #ffd166; }
 #finishShopping { margin-top: 12px; }
+.merchant-dialog { width: min(560px, calc(100% - 24px)); max-height: calc(100dvh - 24px); overflow-y: auto; overscroll-behavior: contain; background: #26253f; color: #eee; border: 1px solid #6c63ff; border-radius: 16px; padding: 20px; box-shadow: 0 8px 36px rgba(0,0,0,.5); }
+.merchant-dialog::backdrop { background: rgba(10, 9, 25, .88); }
+.merchant-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.merchant-heading h2 { margin: 0; font-size: 22px; }
 button[hidden] { display: none; }
 .queue-item:disabled { opacity: .6; }
 .overlay { z-index: 10; }
@@ -110,5 +114,5 @@ body { padding-bottom: 90px; }
 }
 
 @media (min-width: 1280px) {
-  .game-layout { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .game-layout { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }

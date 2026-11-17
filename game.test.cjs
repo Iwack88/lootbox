@@ -15,6 +15,9 @@ function createGame() {
             classList: { add() {}, remove() {}, toggle() {} },
             style: {},
             querySelectorAll: () => [],
+            addEventListener() {},
+            showModal() { this.open = true; },
+            close() { this.open = false; },
           });
         }
         return elements.get(id);
@@ -191,7 +194,25 @@ test('desktop selection keeps panels visible while mobile retains auto-collapse'
   run(`desktopLayout.matches = true; openDesktopPanels();`);
   assert.equal(run("$('queueCard').open"), true);
   run('selectCustomer(state.queue[0].id)');
-  for (const id of ['queueCard', 'custCard', 'pickCard', 'boxCard', 'inventoryCard', 'shopCard']) {
+  for (const id of ['queueCard', 'custCard', 'pickCard', 'boxCard', 'inventoryCard']) {
     assert.equal(run(`$('${id}').open`), true);
   }
+});
+
+test('merchant dialog opens at the start and after the fifth result, and closes when shopping ends', () => {
+  const run = createGame();
+  assert.equal(run("$('shopDialog').open"), true);
+  run("buy('pot1')");
+  assert.equal(run("$('shopDialog').open"), true);
+  assert.equal(run("$('shopGold').textContent"), 95);
+  run('finishShopping()');
+  assert.equal(run("$('shopDialog').open"), false);
+  for (let i = 0; i < 5; i++) {
+    run("state.queue = [generateCustomer()]; selectCustomer(state.queue[0].id); chooseBox('small'); send();");
+    assert.equal(run("$('shopDialog').open"), false);
+    run("$('next').onclick()");
+  }
+  assert.equal(run("$('shopDialog').open"), true);
+  run('finishShopping()');
+  assert.equal(run("$('shopDialog').open"), false);
 });

@@ -3,7 +3,7 @@ const desktopLayout = matchMedia('(min-width: 900px)');
 
 function openDesktopPanels() {
   if (desktopLayout.matches) {
-    for (const id of ['queueCard', 'custCard', 'pickCard', 'boxCard', 'inventoryCard', 'shopCard']) $(id).open = true;
+    for (const id of ['queueCard', 'custCard', 'pickCard', 'boxCard', 'inventoryCard']) $(id).open = true;
   }
 }
 desktopLayout.addEventListener('change', openDesktopPanels);
@@ -146,15 +146,19 @@ function returnBoxToInventory() {
 function buy(id) {
   const it = ITEMS.find(i => i.id === id);
   if (!state.shopping || !it || state.gold < it.cost) return;
+  const restoreFocus = document.activeElement?.closest('#shop .shop-item')?.dataset.id === id;
   state.gold -= it.cost;
   state.inventory[id] = (state.inventory[id] || 0) + 1;
   render();
+  if (restoreFocus) {
+    const button = $('shop').querySelector(`[data-id="${id}"]`);
+    (button.disabled ? $('finishShopping') : button).focus();
+  }
 }
 
 function finishShopping() {
   if (!state.shopping) return;
   state.shopping = false;
-  if (!desktopLayout.matches) $('shopCard').open = false;
   $('queueCard').open = true;
   render();
 }
@@ -203,7 +207,6 @@ function selectCustomer(id) {
     $('queueCard').open = false;
     for (const id of ['custCard', 'pickCard', 'boxCard']) $(id).open = true;
     $('inventoryCard').open = false;
-    $('shopCard').open = false;
   }
   openDesktopPanels();
   render();
@@ -250,8 +253,7 @@ function send() {
   $('next').onclick = () => {
     state.showingResult = false;
     $('result').classList.add('hidden');
-    if (state.shopping) $('shopCard').open = true;
-    else if (autoCollapse) $('queueCard').open = true;
+    if (!state.shopping && autoCollapse) $('queueCard').open = true;
     render();
   };
 }
@@ -318,6 +320,7 @@ function renderQueue() {
 function render() {
   const c = state.active;
   $('gold').textContent = state.gold;
+  $('shopGold').textContent = state.gold;
   $('exp').textContent = state.exp;
   $('merchantStatus').textContent = state.shopping ? 'Händler da · Kundentimer pausiert' : `Händler in ${MERCHANT_INTERVAL - state.completed} Aufträgen`;
   $('merchantProgress').value = state.shopping ? MERCHANT_INTERVAL : state.completed;
@@ -368,6 +371,9 @@ function render() {
     </button>`;
   }).join('') : '<div class="empty">Der Händler ist unterwegs.</div>';
   $('shop').querySelectorAll('.shop-item').forEach(el => el.onclick = () => buy(el.dataset.id));
+  const shopDialog = $('shopDialog');
+  if (state.shopping && !state.showingResult && !shopDialog.open) shopDialog.showModal();
+  else if ((!state.shopping || state.showingResult) && shopDialog.open) shopDialog.close();
   renderInventory();
   renderPicker();
   renderQueue();
@@ -420,6 +426,7 @@ renderAuto();
 
 $('send').onclick = send;
 $('finishShopping').onclick = finishShopping;
+$('shopDialog').addEventListener('cancel', event => event.preventDefault());
 $('restock').onclick = emergencyRestock;
 for (let i = 0; i < 3; i++) state.queue.push(generateCustomer());
 render();

@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1b1a2e">
 <meta http-equiv="Cache-Control" content="no-cache">
 <title>Lootbox Packer</title>
-<link rel="stylesheet" href="style.css?v=8">
+<link rel="stylesheet" href="style.css?v=9">
 </head>
 <body>
 <header>
@@ -60,19 +60,21 @@
 </details>
 </section>
 
-<section class="panel-column" aria-label="Händler">
-<details class="card" id="shopCard" open>
-  <summary>Shop</summary>
+</main>
+
+<dialog id="shopDialog" class="merchant-dialog" aria-labelledby="shopTitle">
+  <div class="merchant-heading">
+    <h2 id="shopTitle">🛒 Händler</h2>
+    <span>💰 <b id="shopGold">0</b></span>
+  </div>
   <p id="shopHint" class="hint"></p>
   <div id="shop" class="shop"></div>
   <button id="finishShopping" class="primary">Einkauf beenden</button>
-</details>
-</section>
-</main>
+</dialog>
 
 <button id="send" class="primary fab">📦 Absenden</button>
 
 <div id="result" class="overlay hidden"></div>
-<script src="game.js?v=8"></script>
+<script src="game.js?v=9"></script>
 </body>
 </html>
