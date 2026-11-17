@@ -16,16 +16,40 @@ const ATTRS = {
 };
 
 // Alle Items belegen einen Slot; stärkere Varianten kosten mehr Gold.
+const ITEM_RARITIES = {
+  common: { label: 'Gewöhnlich' },
+  rare: { label: 'Selten' },
+  epic: { label: 'Episch' },
+  legendary: { label: 'Legendär' },
+};
 const ITEMS = [
-  { id: 'pot1',   name: 'Kleiner Heiltrank', icon: '🧪', attr: 'hp',    value: 10, cost: 5, level: 1 },
-  { id: 'pot2',   name: 'Heiltrank',         icon: '🧪', attr: 'hp',    value: 25, cost: 18, level: 2 },
-  { id: 'pot3',   name: 'Großer Heiltrank',  icon: '🍶', attr: 'hp',    value: 50, cost: 45, level: 4 },
-  { id: 'dag',    name: 'Kurzschwert',       icon: '🗡️', attr: 'melee', value: 8,  cost: 6, level: 1 },
-  { id: 'sword',  name: 'Schwert',           icon: '⚔️', attr: 'melee', value: 15, cost: 20, level: 2 },
-  { id: 'shield', name: 'Holzschild',        icon: '🛡️', attr: 'armor', value: 10, cost: 8, level: 1 },
-  { id: 'plate',  name: 'Plattenrüstung',    icon: '🥋', attr: 'armor', value: 30, cost: 40, level: 4 },
-  { id: 'wand',   name: 'Zauberstab',        icon: '🪄', attr: 'magic', value: 15, cost: 10, level: 1 },
+  { id: 'pot1',   name: 'Kleiner Heiltrank', icon: '🧪', stats: { hp: 10 },    rarity: 'common', cost: 5, level: 1 },
+  { id: 'pot2',   name: 'Heiltrank',         icon: '🧪', stats: { hp: 25 },    rarity: 'common', cost: 18, level: 2 },
+  { id: 'pot3',   name: 'Großer Heiltrank',  icon: '🍶', stats: { hp: 50 },    rarity: 'common', cost: 45, level: 4 },
+  { id: 'dag',    name: 'Kurzschwert',       icon: '🗡️', stats: { melee: 8 },  rarity: 'common', cost: 6, level: 1 },
+  { id: 'sword',  name: 'Schwert',           icon: '⚔️', stats: { melee: 15 }, rarity: 'common', cost: 20, level: 2 },
+  { id: 'shield', name: 'Holzschild',        icon: '🛡️', stats: { armor: 10 }, rarity: 'common', cost: 8, level: 1 },
+  { id: 'plate',  name: 'Plattenrüstung',    icon: '🥋', stats: { armor: 30 }, rarity: 'common', cost: 40, level: 4 },
+  { id: 'wand',   name: 'Zauberstab',        icon: '🪄', stats: { magic: 15 }, rarity: 'common', cost: 10, level: 1 },
+  { id: 'righteousShield', name: 'Schild der Rechtschaffenheit', icon: '🔰', stats: { armor: 20, magic: 10 }, rarity: 'rare', cost: 38, level: 3 },
+  { id: 'runeblade', name: 'Runenklinge', icon: '🗡️', stats: { melee: 12, magic: 10 }, rarity: 'rare', cost: 34, level: 3 },
+  { id: 'guardianAmulet', name: 'Amulett des Wächters', icon: '📿', stats: { hp: 20, armor: 10 }, rarity: 'rare', cost: 30, level: 4 },
+  { id: 'lifebloomStaff', name: 'Stab der Lebensblüte', icon: '🌿', stats: { magic: 20, hp: 15 }, rarity: 'rare', cost: 40, level: 5 },
 ];
+
+function statsText(stats) {
+  return Object.entries(stats).map(([attr, value]) =>
+    `${ATTRS[attr].icon} ${ATTRS[attr].name}: ${value > 0 ? '+' : ''}${value}`
+  ).join(' · ');
+}
+
+function itemNameHtml(item) {
+  return `<span class="item-name item-rarity-${item.rarity}">${item.name}</span>`;
+}
+
+function itemDetailsHtml(item) {
+  return `<span class="item-rarity">${ITEM_RARITIES[item.rarity].label}</span> · ${statsText(item.stats)} · 1 Slot`;
+}
 
 const BOXES = [
   { id: 'small',  name: 'Kleine Kiste',   icon: '📦', slots: 3, level: 1, modifiers: {} },
@@ -124,7 +148,7 @@ const queueCapacity = () => CUSTOMER_PLACES.filter(isUnlocked).at(-1).count;
 
 function unlocksAtLevel(level) {
   return [
-    ...ITEMS.filter(item => item.level === level).map(item => `Item: ${item.icon} ${item.name}`),
+    ...ITEMS.filter(item => item.level === level).map(item => `Item: ${item.icon} ${itemNameHtml(item)} (${ITEM_RARITIES[item.rarity].label} · ${statsText(item.stats)})`),
     ...BOXES.filter(box => box.level === level).map(box => `Kiste: ${box.icon} ${box.name} (${box.slots} Items · ${boxEffectsText(box)})`),
     ...CUSTOMER_TIERS.filter(tier => tier.level === level).map(tier => `Kunden: ${tier.label}`),
     ...CUSTOMER_PLACES.filter(places => places.level === level).map(places => `${places.count} Kundenplätze`),
@@ -196,7 +220,7 @@ function changeStreak(points) {
       const pool = ITEMS.filter(item => item.level === itemLevel);
       const items = Array.from({ length: 3 }, () => pick(pool));
       for (const item of items) state.inventory[item.id] = (state.inventory[item.id] || 0) + 1;
-      bonuses.push(`Checkpunkt ${checkpoint.points}: ${items.map(item => `${item.icon} ${item.name}`).join(', ')} erhalten.`);
+      bonuses.push(`Checkpunkt ${checkpoint.points}: ${items.map(item => `${item.icon} ${itemNameHtml(item)}`).join(', ')} erhalten.`);
     }
   }
   return bonuses;
@@ -250,7 +274,9 @@ function totals() {
   if (state.boxType) {
     for (const [attr, value] of Object.entries(state.boxType.modifiers)) t[attr] = value;
   }
-  for (const it of state.box) t[it.attr] = (t[it.attr] || 0) + it.value;
+  for (const it of state.box) {
+    for (const [attr, value] of Object.entries(it.stats)) t[attr] = (t[attr] || 0) + value;
+  }
   return t;
 }
 
@@ -274,10 +300,7 @@ const rewardFor = (q, c, hasPackedItems = state.box.length > 0) => {
 };
 
 function boxEffectsText(box) {
-  const effects = Object.entries(box.modifiers)
-    .map(([attr, value]) => `${ATTRS[attr].icon} ${ATTRS[attr].name}: ${value > 0 ? '+' : ''}${value}`)
-    .join(' · ');
-  return effects || 'Neutral';
+  return statsText(box.modifiers) || 'Neutral';
 }
 
 function returnBoxToInventory() {
@@ -512,8 +535,8 @@ function needsHtml(c, t) {
 function itemRewardHtml(c, earned = null) {
   const { item, quality } = c.itemReward;
   const threshold = Math.round(quality * 100);
-  const description = `1 ${item.name} ab ${threshold} % Boxqualität${earned === true ? ' – erreicht' : ''}`;
-  return `<span class="reward-offer${earned === true ? ' earned' : ''}" role="img" aria-label="${description}" title="${description}">
+  const description = `1 ${item.name} ab ${threshold} % Boxqualität${earned === true ? ' – erreicht' : ''} · ${ITEM_RARITIES[item.rarity].label} · ${statsText(item.stats)}`;
+  return `<span class="reward-offer item-rarity-${item.rarity}${earned === true ? ' earned' : ''}" role="img" aria-label="${description}" title="${description}">
     <span class="reward-icon" aria-hidden="true">${item.icon}</span>
     <span>${earned === true ? '✓ ' : ''}Reward</span>
     <span class="reward-threshold">ab ${threshold} %</span>
@@ -578,7 +601,7 @@ function render() {
 
   const used = usedSlots();
   $('box').innerHTML = state.box.length
-    ? state.box.map((it, i) => `<button class="box-item" data-i="${i}"><span class="ico">${it.icon}</span><span class="txt">${it.name}</span><span class="remove">✕</span></button>`).join('')
+    ? state.box.map((it, i) => `<button class="box-item item-rarity-${it.rarity}" data-i="${i}"><span class="ico">${it.icon}</span><span class="txt">${itemNameHtml(it)}<small>${itemDetailsHtml(it)}</small></span><span class="remove">✕</span></button>`).join('')
     : `<div class="empty">${state.boxType ? 'Leer – packe Items aus deinem Inventar ein' : 'Wähle zuerst eine Box'}</div>`;
   $('box').querySelectorAll('.box-item').forEach(el => el.onclick = () => removeFromBox(+el.dataset.i));
   $('slotInfo').textContent = state.boxType ? `${used}/${capacity()} Items` : '';
@@ -604,18 +627,18 @@ function render() {
   $('shop').innerHTML = state.shopping ? ITEMS.map(it => {
     const inCart = state.cart[it.id] || 0;
     const locked = !isUnlocked(it);
-    return `<div class="shop-row">
+    return `<div class="shop-row item-rarity-${it.rarity}">
       <span class="ico">${it.icon}</span>
-      <span class="txt">${it.name}<small>${ATTRS[it.attr].icon} +${it.value} · 1 Item · Im Lager: ${state.inventory[it.id] || 0} · Im Warenkorb: ${inCart}</small></span>
+      <span class="txt">${itemNameHtml(it)}<small>${itemDetailsHtml(it)}</small><small>Im Lager: ${state.inventory[it.id] || 0} · Im Warenkorb: ${inCart}</small></span>
       <span class="cost">💰 ${it.cost}</span>
       <button class="add-item" data-id="${it.id}" ${locked ? 'disabled' : ''} aria-label="${it.name} ${locked ? `ab Level ${it.level}` : 'in den Warenkorb legen'}">${locked ? `Lv. ${it.level}` : '＋'}</button>
     </div>`;
   }).join('') : '<div class="empty">Der Händler ist unterwegs.</div>';
   $('shop').querySelectorAll('.add-item').forEach(el => el.onclick = () => addToCart(el.dataset.id));
   $('cart').innerHTML = cartQuantity()
-    ? ITEMS.filter(it => state.cart[it.id] > 0).map(it => `<div class="cart-row">
+    ? ITEMS.filter(it => state.cart[it.id] > 0).map(it => `<div class="cart-row item-rarity-${it.rarity}">
         <span class="ico">${it.icon}</span>
-        <span class="txt">${it.name}<small>Im Lager: ${state.inventory[it.id] || 0} · Im Warenkorb: ${state.cart[it.id]}</small></span>
+        <span class="txt">${itemNameHtml(it)}<small>${itemDetailsHtml(it)}</small><small>Im Lager: ${state.inventory[it.id] || 0} · Im Warenkorb: ${state.cart[it.id]}</small></span>
         <span class="cost">×${state.cart[it.id]}</span>
         <button class="remove-item" data-id="${it.id}" aria-label="${it.name} aus dem Warenkorb entfernen">−</button>
       </div>`).join('')
@@ -636,9 +659,9 @@ function renderInventory() {
   $('inventory').innerHTML = owned.length
     ? owned.map(it => {
         const off = !isUnlocked(it) || !state.active || !state.boxType || usedSlots() >= capacity();
-        return `<button class="shop-item" data-id="${it.id}" ${off ? 'disabled' : ''}>
+        return `<button class="shop-item item-rarity-${it.rarity}" data-id="${it.id}" ${off ? 'disabled' : ''}>
           <span class="ico">${it.icon}</span>
-          <span class="txt">${it.name}<small>${ATTRS[it.attr].icon} +${it.value} · 1 Item · In Box legen</small></span>
+          <span class="txt">${itemNameHtml(it)}<small>${itemDetailsHtml(it)} · In Box legen</small></span>
           <span class="cost">×${state.inventory[it.id]}</span>
         </button>`;
       }).join('')

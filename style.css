@@ -151,6 +151,16 @@ body { padding-bottom: 90px; }
 .card, .txt { min-width: 0; }
 .shop-item .cost, .queue-item .secs, .box-item .remove { flex-shrink: 0; }
 .need-head { flex-wrap: wrap; gap: 4px; }
+.item-rarity-common { --item-color: #b7b3cd; }
+.item-rarity-rare { --item-color: #4cc38a; }
+.item-rarity-epic { --item-color: #bd8bff; }
+.item-rarity-legendary { --item-color: #ffd166; }
+.item-name, .item-rarity { color: var(--item-color); }
+.item-rarity { font-weight: 600; }
+.shop-row, .cart-row, .shop-item, .box-item { border-left: 3px solid var(--item-color); }
+.shop-row .txt, .cart-row .txt, .shop-item .txt, .box-item .txt { overflow-wrap: anywhere; }
+.box-item .txt small { display: block; font-size: 11px; }
+.reward-offer:not(.earned) { border-color: var(--item-color); }
 
 @media (min-width: 900px) {
   body { max-width: 1800px; padding: 24px 24px 90px; }

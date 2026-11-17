@@ -224,7 +224,7 @@ test('reward badges show the item icon and threshold and results explain the unm
     state.queue = [generateCustomer()]; finishShopping(); selectCustomer(state.queue[0].id); chooseBox('small');`);
   assert.match(run("$('customer').innerHTML"), /class="reward-icon"[^>]*>🥋/);
   assert.match(run("$('customer').innerHTML"), /ab 85 %/);
-  assert.match(run("$('customer').innerHTML"), /aria-label="1 Plattenrüstung ab 85 % Boxqualität"/);
+  assert.match(run("$('customer').innerHTML"), /aria-label="1 Plattenrüstung ab 85 % Boxqualität · Gewöhnlich · 🛡️ Rüstung: \+30"/);
   assert.doesNotMatch(run("$('customer').innerHTML"), /✓ Reward|höchste erreichte Stufe/);
   run('send()');
   assert.match(run("$('result').innerHTML"), /Keine Itembelohnung – benötigt: 85 %/);
@@ -294,7 +294,7 @@ test('boxes count each item as one slot and apply neutral or magical modifiers',
     selectCustomer(state.queue[0].id); chooseBox('small');
     packItem('dag'); packItem('dag');`);
   assert.equal(run('usedSlots()'), 2);
-  assert.equal(run('state.box.reduce((sum, item) => sum + item.value, 0)'), 16);
+  assert.equal(run('state.box.reduce((sum, item) => sum + (item.stats.melee || 0), 0)'), 16);
   assert.equal(run('state.box.reduce((sum, item) => sum + item.cost, 0)'), 12);
   assert.equal(run('state.inventory.sword'), 1);
   run("state.exp = expForLevel(4); chooseBox('magic');");
@@ -338,7 +338,7 @@ test('emergency package costs gold and contains three basic items across at leas
     run('state.inventory = {}; emergencyRestock();');
     assert.equal(run('Object.values(state.inventory).reduce((a, b) => a + b, 0)'), 3);
     assert.equal(run('Object.keys(state.inventory).every(id => RESTOCK_IDS.includes(id))'), true);
-    assert.ok(run('new Set(Object.keys(state.inventory).map(id => ITEMS.find(it => it.id === id).attr)).size') >= 2);
+    assert.ok(run('new Set(Object.keys(state.inventory).flatMap(id => Object.keys(ITEMS.find(it => it.id === id).stats))).size') >= 2);
   }
   assert.equal(run('state.gold'), 0);
   assert.equal(run('state.debt'), 0);
@@ -564,7 +564,7 @@ test('crossing several checkpoints grants each once, queues separate discounts, 
   assert.equal(run('discountPercent()'), 15);
   assert.equal(run('state.pendingDiscounts.length'), 0);
 
-  for (const level of [1, 2, 4]) {
+  for (const level of [1, 2, 3, 4, 5]) {
     const game = createGame();
     game(`state.exp = expForLevel(${level}); changeStreak(19); state.inventory = {}; changeStreak(1);`);
     assert.equal(game('Object.values(state.inventory).reduce((a,b) => a+b, 0)'), 3);
@@ -741,4 +741,76 @@ test('checkpoint jingle takes precedence over level-up and send; merchant chime 
   assert.deepEqual(JSON.parse(run('JSON.stringify(sounds)')), ['checkpoint']);
   run("$('next').onclick()");
   assert.deepEqual(JSON.parse(run('JSON.stringify(sounds)')), ['checkpoint', 'merchant']);
+});
+
+test('rare items unlock in the shop, transfer at checkout, and fulfill two needs with one slot', () => {
+  for (const id of ['righteousShield', 'runeblade', 'guardianAmulet', 'lifebloomStaff']) {
+    const run = createShoppingGame();
+    run(`globalThis.item = ITEMS.find(item => item.id === '${id}');
+      state.exp = expForLevel(item.level - 1); addToCart(item.id);`);
+    assert.equal(run('cartQuantity()'), 0);
+    run('state.exp = expForLevel(item.level); addToCart(item.id);');
+    assert.equal(run('state.gold'), 500);
+    assert.equal(run('state.inventory[item.id]'), undefined);
+    assert.match(run("$('shop').innerHTML"), /shop-row item-rarity-rare/);
+    assert.match(run("$('cart').innerHTML"), /cart-row item-rarity-rare/);
+    assert.match(run("$('cart').innerHTML"), /Selten/);
+    run(`checkout(); finishShopping(); selectCustomer(state.queue[0].id);
+      state.active.needs = Object.entries(item.stats).map(([attr,target]) => ({attr,target,prio:2}));
+      chooseBox('small'); packItem(item.id);`);
+    assert.equal(run('state.gold'), run('500 - item.cost'));
+    assert.equal(run('usedSlots()'), 1);
+    assert.equal(run('state.inventory[item.id]'), 0);
+    assert.equal(run('quality()'), 1);
+    assert.equal(run('state.active.needs.length'), 2);
+    assert.match(run("$('box').innerHTML"), /box-item item-rarity-rare/);
+    assert.match(run("$('box').innerHTML"), /1 Slot/);
+    const attributes = JSON.parse(run('JSON.stringify(Object.entries(item.stats))'));
+    for (const [attr, value] of attributes) {
+      assert.equal(run(`totals()['${attr}']`), value);
+      assert.ok(run("$('box').innerHTML").includes(run(`statsText({${attr}:${value}})`)));
+      assert.match(run("$('customer').innerHTML"), new RegExp(`${value}/${value}`));
+    }
+    run('removeFromBox(0)');
+    assert.equal(run('quality()'), 0);
+    assert.equal(run('state.inventory[item.id]'), 1);
+    run('packItem(item.id); selectCustomer(state.queue[0].id);');
+    assert.equal(run('state.inventory[item.id]'), 1);
+    assert.equal(run('state.box.length'), 0);
+  }
+});
+
+test('multi-attribute items combine with ordinary items and box modifiers without per-item clamping', () => {
+  const run = createShoppingGame();
+  run(`addToCart('runeblade'); addToCart('righteousShield'); addToCart('pot2'); checkout(); finishShopping();
+    selectCustomer(state.queue[0].id); chooseBox('magic');
+    state.active.needs = [{attr:'magic', target:25, prio:3}, {attr:'melee', target:2, prio:1}, {attr:'armor', target:20, prio:2}];
+    packItem('runeblade'); packItem('righteousShield'); packItem('pot2');`);
+  assert.deepEqual(JSON.parse(run('JSON.stringify(totals())')), { magic: 25, melee: 2, armor: 20, hp: 25 });
+  assert.equal(run('quality()'), 1);
+  assert.equal(run('usedSlots()'), 3);
+  assert.match(run("$('preview').innerHTML"), /Itemkosten: 90/);
+  run('removeFromBox(0)');
+  assert.deepEqual(JSON.parse(run('JSON.stringify(totals())')), { magic: 15, melee: -10, armor: 20, hp: 25 });
+  assert.ok(run('quality()') < 1);
+  run("chooseBox('medium')");
+  assert.deepEqual(JSON.parse(run('JSON.stringify(totals())')), {});
+  assert.equal(run('state.inventory.runeblade'), 1);
+  assert.equal(run('state.inventory.righteousShield'), 1);
+  assert.equal(run('state.inventory.pot2'), 1);
+});
+
+test('roadmap and streak packages include unlocked rare items while starter stock and emergency restock stay basic', () => {
+  const run = createGame();
+  assert.equal(run("Object.keys(state.inventory).every(id => ITEMS.find(item => item.id === id).rarity === 'common')"), true);
+  run(`state.exp = expForLevel(3); Math.random = () => 0;
+    changeStreak(19); state.inventory = {}; changeStreak(1); render(); renderRoadmap();`);
+  assert.equal(run('Object.values(state.inventory).reduce((a,b) => a+b,0)'), 3);
+  assert.equal(run("Object.keys(state.inventory).every(id => ITEMS.find(item => item.id === id).rarity === 'rare' && isUnlocked(ITEMS.find(item => item.id === id)))"), true);
+  assert.match(run("$('inventory').innerHTML"), /shop-item item-rarity-rare/);
+  assert.match(run("$('roadmap').innerHTML"), /Schild der Rechtschaffenheit/);
+  assert.match(run("$('roadmap').innerHTML"), /Selten · 🛡️ Rüstung: \+20 · 🔮 Magie: \+10/);
+  run('state.inventory = {}; emergencyRestock();');
+  assert.equal(run("Object.keys(state.inventory).every(id => ITEMS.find(item => item.id === id).rarity === 'common')"), true);
+  assert.equal(run('Object.values(state.inventory).reduce((a,b) => a+b,0)'), 3);
 });
