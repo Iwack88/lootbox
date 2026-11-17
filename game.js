@@ -35,6 +35,18 @@ const ITEMS = [
   { id: 'runeblade', name: 'Runenklinge', icon: '🗡️', stats: { melee: 12, magic: 10 }, rarity: 'rare', cost: 34, level: 3 },
   { id: 'guardianAmulet', name: 'Amulett des Wächters', icon: '📿', stats: { hp: 20, armor: 10 }, rarity: 'rare', cost: 30, level: 4 },
   { id: 'lifebloomStaff', name: 'Stab der Lebensblüte', icon: '🌿', stats: { magic: 20, hp: 15 }, rarity: 'rare', cost: 40, level: 5 },
+  { id: 'bandage', name: 'Verband', icon: '🩹', stats: { hp: 6 }, rarity: 'common', cost: 2, level: 2 },
+  { id: 'ironSword', name: 'Eisenschwert', icon: '⚔️', stats: { melee: 10 }, rarity: 'common', cost: 9, level: 2 },
+  { id: 'buckler', name: 'Faustschild', icon: '🛡️', stats: { armor: 4 }, rarity: 'common', cost: 2, level: 2 },
+  { id: 'leatherCap', name: 'Lederkappe', icon: '🪖', stats: { armor: 3 }, rarity: 'common', cost: 1, level: 2 },
+  { id: 'sparkStone', name: 'Funkenstein', icon: '💎', stats: { magic: 7 }, rarity: 'common', cost: 3, level: 2 },
+  { id: 'battleAxe', name: 'Streitaxt', icon: '🪓', stats: { melee: 18 }, rarity: 'common', cost: 24, level: 3 },
+  { id: 'steelShield', name: 'Stahlschild', icon: '🛡️', stats: { armor: 14 }, rarity: 'common', cost: 14, level: 3 },
+  { id: 'restorationDraught', name: 'Regenerationstrank', icon: '⚗️', stats: { hp: 37 }, rarity: 'common', cost: 29, level: 3 },
+  { id: 'runeFocus', name: 'Runenfokus', icon: '🔮', stats: { magic: 27 }, rarity: 'common', cost: 25, level: 4 },
+  { id: 'emberCharm', name: 'Glutamulett', icon: '🔥', stats: { magic: 11, armor: 5 }, rarity: 'rare', cost: 22, level: 4 },
+  { id: 'warhammer', name: 'Kriegshammer', icon: '🔨', stats: { melee: 32 }, rarity: 'common', cost: 42, level: 5 },
+  { id: 'vampiricDagger', name: 'Vampirdolch', icon: '🗡️', stats: { melee: 9, hp: 7 }, rarity: 'rare', cost: 19, level: 5 },
 ];
 
 function statsText(stats) {
@@ -67,7 +79,7 @@ const CLASSES = [
   { cls: 'Magier',        icon: '🧙',   needs: [ { attr: 'magic', prio: 3, target: 30 }, { attr: 'hp', prio: 2, target: 25 }, { attr: 'armor', prio: 1, target: 10 } ] },
   { cls: 'Schurke',       icon: '🥷',   needs: [ { attr: 'melee', prio: 3, target: 28 }, { attr: 'hp', prio: 2, target: 20 } ] },
   { cls: 'Paladin',       icon: '🛡️',   needs: [ { attr: 'armor', prio: 3, target: 40 }, { attr: 'hp', prio: 3, target: 35 }, { attr: 'melee', prio: 1, target: 10 } ] },
-  { cls: 'Bogenschütze',  icon: '🏹',   needs: [ { attr: 'melee', prio: 3, target: 24 }, { attr: 'armor', prio: 2, target: 10 }, { attr: 'hp', prio: 1, target: 10 } ] },
+  { cls: 'Bogenschütze',  icon: '🏹',   needs: [ { attr: 'melee', prio: 3, target: 24 }, { attr: 'armor', prio: 2, target: 14 }, { attr: 'hp', prio: 1, target: 10 } ] },
   { cls: 'Hexer',         icon: '🧛',   needs: [ { attr: 'magic', prio: 3, target: 45 }, { attr: 'hp', prio: 1, target: 10 } ] },
   { cls: 'Zwerg',         icon: '⛏️',   needs: [ { attr: 'armor', prio: 3, target: 30 }, { attr: 'melee', prio: 2, target: 20 } ] },
   { cls: 'Heiler',        icon: '🌿',   needs: [ { attr: 'hp', prio: 3, target: 60 }, { attr: 'magic', prio: 2, target: 15 }, { attr: 'armor', prio: 1, target: 10 } ] },
@@ -117,11 +129,11 @@ const RESTOCK_SIZE = 3;
 const RESTOCK_IDS = ['pot1', 'dag', 'shield', 'wand'];
 const CUSTOMER_TIERS = [
   { id: 'wannabe', label: 'Wannabe', level: 1, points: 1, weight: 50, scale: 0.6, rarity: 'common', time: 120,
-    reward: { quality: 0.5, ids: ['pot1', 'dag', 'shield', 'wand'] } },
+    reward: { quality: 0.5, ids: ['pot1', 'dag', 'shield', 'wand', 'bandage', 'ironSword', 'buckler', 'leatherCap', 'sparkStone'] } },
   { id: 'adventurer', label: 'Abenteurer', level: 2, points: 2, weight: 32, scale: 1, rarity: 'common', time: 90,
-    reward: { quality: 0.7, ids: ['pot2', 'sword'] } },
+    reward: { quality: 0.7, ids: ['pot2', 'sword', 'battleAxe', 'steelShield', 'restorationDraught', 'runeFocus', 'emberCharm', 'vampiricDagger'] } },
   { id: 'hero', label: 'Held', level: 5, points: 3, weight: 15, scale: 1.2, rarity: 'rare', time: 75,
-    reward: { quality: 0.85, ids: ['plate'] } },
+    reward: { quality: 0.85, ids: ['plate', 'righteousShield', 'runeblade', 'lifebloomStaff', 'warhammer'] } },
   { id: 'demigod', label: 'Demi-Gott', level: 7, points: 4, weight: 3, scale: 1.5, rarity: 'epic', time: 60,
     reward: { quality: 1, ids: ['pot3'] } },
 ];
@@ -179,7 +191,7 @@ function rollCustomerTier() {
   return CUSTOMER_TIERS[0];
 }
 
-// Zielwerte schwanken um ±20% (auf 5 gerundet), damit gleiche Klassen nicht identisch sind.
+// Ganzzahlige Zielwerte schwanken um ±20%, damit gleiche Klassen nicht identisch sind.
 function generateCustomer() {
   const tier = rollCustomerTier();
   const rarity = tier.rarity;
@@ -191,7 +203,7 @@ function generateCustomer() {
     demigod: DEMIGOD_CLASSES,
   }[tier.id];
   const base = pick(classes);
-  const needs = base.needs.map(n => ({ ...n, target: Math.max(5, Math.round(n.target * tier.scale * (0.8 + Math.random() * 0.4) / 5) * 5) }));
+  const needs = base.needs.map(n => ({ ...n, target: Math.max(5, Math.round(n.target * tier.scale * (0.8 + Math.random() * 0.4))) }));
   const itemReward = {
     quality: tier.reward.quality,
     item: pick(ITEMS.filter(item => tier.reward.ids.includes(item.id) && isUnlocked(item))),
@@ -289,8 +301,11 @@ function quality() {
     sum += w * Math.min(1, Math.max(0, t[n.attr] || 0) / n.target);
     wsum += w;
   }
-  return sum / wsum;
+  // Rundungsrauschen darf exakt erreichte Reward-Schwellen nicht unterschreiten.
+  return Number((sum / wsum).toFixed(12));
 }
+
+const qualityPercent = q => Math.floor(Number((q * 100).toFixed(10)));
 
 const rewardFor = (q, c, hasPackedItems = state.box.length > 0) => {
   const m = RARITY[c.rarity].mult;
@@ -469,7 +484,7 @@ function send() {
   const label = q >= 0.9 ? 'Perfekt!' : q >= 0.6 ? 'Gut' : q >= 0.3 ? 'Geht so' : 'Schlecht';
   $('result').innerHTML = `
     <h1>${label}</h1>
-    <div>Erfüllung: ${Math.floor(q * 100)}%</div>
+    <div>Erfüllung: ${qualityPercent(q)}%</div>
     <div>💰 +${r.gold} &nbsp; ⭐ +${r.exp}</div>
     <div>Serie: +${r.points} Punkte · Gesamt: ${state.streak}</div>
     ${levelUp}
@@ -479,6 +494,7 @@ function send() {
     <button class="primary" id="next">${state.shopping ? 'Zum Händler' : 'Weiter'}</button>`;
   render();
   $('result').classList.remove('hidden');
+  $('result').scrollTop = 0;
   $('next').onclick = () => {
     state.showingResult = false;
     $('result').classList.add('hidden');
@@ -614,7 +630,7 @@ function render() {
     const itemCost = state.box.reduce((sum, item) => sum + item.cost, 0);
     const repayment = Math.min(state.debt, r.gold);
     const netGold = r.gold - itemCost - repayment;
-    $('preview').innerHTML = `Aktuell: ${Math.floor(q * 100)}% → 💰 ${r.gold}  ⭐ ${r.exp}<br>
+    $('preview').innerHTML = `Aktuell: ${qualityPercent(q)}% → 💰 ${r.gold}  ⭐ ${r.exp}<br>
       <span class="item-cost">Itemkosten: ${itemCost} 💰</span>
       <span class="net-gold${netGold < 0 ? ' loss' : ''}"> · Netto: ${netGold >= 0 ? '+' : ''}${netGold} 💰</span>
       ${repayment ? `<br>Davon Vorschuss-Rückzahlung: ${repayment} Gold (im Netto berücksichtigt)` : ''}<br>
@@ -624,7 +640,7 @@ function render() {
   }
   $('send').disabled = state.shopping || state.showingResult || !c || !state.boxType;
 
-  $('shop').innerHTML = state.shopping ? ITEMS.map(it => {
+  const shopRow = it => {
     const inCart = state.cart[it.id] || 0;
     const locked = !isUnlocked(it);
     return `<div class="shop-row item-rarity-${it.rarity}">
@@ -633,7 +649,13 @@ function render() {
       <span class="cost">💰 ${it.cost}</span>
       <button class="add-item" data-id="${it.id}" ${locked ? 'disabled' : ''} aria-label="${it.name} ${locked ? `ab Level ${it.level}` : 'in den Warenkorb legen'}">${locked ? `Lv. ${it.level}` : '＋'}</button>
     </div>`;
-  }).join('') : '<div class="empty">Der Händler ist unterwegs.</div>';
+  };
+  const unlockedItems = ITEMS.filter(isUnlocked).sort((a, b) => a.level - b.level);
+  const lockedItems = ITEMS.filter(item => !isUnlocked(item)).sort((a, b) => a.level - b.level);
+  $('shop').innerHTML = state.shopping
+    ? unlockedItems.map(shopRow).join('') + (lockedItems.length
+      ? `<details class="locked-items"><summary>Später freischalten (${lockedItems.length})</summary><div class="shop">${lockedItems.map(shopRow).join('')}</div></details>` : '')
+    : '<div class="empty">Der Händler ist unterwegs.</div>';
   $('shop').querySelectorAll('.add-item').forEach(el => el.onclick = () => addToCart(el.dataset.id));
   $('cart').innerHTML = cartQuantity()
     ? ITEMS.filter(it => state.cart[it.id] > 0).map(it => `<div class="cart-row item-rarity-${it.rarity}">

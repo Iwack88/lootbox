@@ -220,7 +220,8 @@ test('advertised reward stays fixed and sending grants exactly one item once', (
 
 test('reward badges show the item icon and threshold and results explain the unmet tier requirement', () => {
   const run = createShoppingGame();
-  run(`globalThis.rollCustomerTier = () => CUSTOMER_TIERS.find(t => t.id === 'hero');
+  run(`Math.random = () => 0;
+    globalThis.rollCustomerTier = () => CUSTOMER_TIERS.find(t => t.id === 'hero');
     state.queue = [generateCustomer()]; finishShopping(); selectCustomer(state.queue[0].id); chooseBox('small');`);
   assert.match(run("$('customer').innerHTML"), /class="reward-icon"[^>]*>🥋/);
   assert.match(run("$('customer').innerHTML"), /ab 85 %/);
@@ -744,7 +745,7 @@ test('checkpoint jingle takes precedence over level-up and send; merchant chime 
 });
 
 test('rare items unlock in the shop, transfer at checkout, and fulfill two needs with one slot', () => {
-  for (const id of ['righteousShield', 'runeblade', 'guardianAmulet', 'lifebloomStaff']) {
+  for (const id of ['righteousShield', 'runeblade', 'guardianAmulet', 'lifebloomStaff', 'emberCharm', 'vampiricDagger']) {
     const run = createShoppingGame();
     run(`globalThis.item = ITEMS.find(item => item.id === '${id}');
       state.exp = expForLevel(item.level - 1); addToCart(item.id);`);
@@ -813,4 +814,104 @@ test('roadmap and streak packages include unlocked rare items while starter stoc
   run('state.inventory = {}; emergencyRestock();');
   assert.equal(run("Object.keys(state.inventory).every(id => ITEMS.find(item => item.id === id).rarity === 'common')"), true);
   assert.equal(run('Object.values(state.inventory).reduce((a,b) => a+b,0)'), 3);
+});
+
+test('customers generate integer needs including 18 melee and 14 armor within their existing difficulty ranges', () => {
+  const run = createGame();
+  run(`state.exp = expForLevel(7);
+    globalThis.rollCustomerTier = () => CUSTOMER_TIERS.find(tier => tier.id === 'adventurer');
+    globalThis.rolls = [0, .25, .25, .25, 0, 0];
+    Math.random = () => rolls.shift() ?? 0;
+    globalThis.customer = generateCustomer();`);
+  assert.equal(run("customer.needs.find(need => need.attr === 'melee').target"), 18);
+  run(`rolls = [4 / CLASSES.length, .5, .5, .5, 0, 0]; customer = generateCustomer();`);
+  assert.equal(run("customer.needs.find(need => need.attr === 'armor').target"), 14);
+  for (const tier of ['wannabe', 'adventurer', 'hero', 'demigod']) {
+    for (const roll of [0, .25, .5, .75, .99999]) {
+      run(`globalThis.rollCustomerTier = () => CUSTOMER_TIERS.find(tier => tier.id === '${tier}');
+        Math.random = () => ${roll}; customer = generateCustomer();`);
+      assert.equal(run(`customer.needs.every(need => {
+        const base = [...WANNABE_CLASSES, ...CLASSES, ...HERO_CLASSES, ...DEMIGOD_CLASSES]
+          .find(template => template.cls === customer.cls).needs.find(entry => entry.attr === need.attr);
+        const scale = CUSTOMER_TIERS.find(tier => tier.id === customer.tier).scale;
+        return Number.isInteger(need.target) &&
+          need.target >= Math.max(5, Math.round(base.target * scale * .8)) &&
+          need.target <= Math.max(5, Math.round(base.target * scale * 1.2));
+      })`), true);
+    }
+  }
+});
+
+test('fine-grained item recipes trade gold against slots and overfilling a need is still allowed', () => {
+  for (const [ids, needs, cost] of [
+    [['ironSword', 'dag', 'shield', 'buckler'], {melee:18, armor:14}, 25],
+    [['battleAxe', 'steelShield'], {melee:18, armor:14}, 38],
+    [['buckler', 'buckler', 'leatherCap', 'leatherCap'], {armor:14}, 6],
+    [['steelShield'], {armor:14}, 14],
+    [['pot2', 'bandage', 'bandage'], {hp:37}, 22],
+    [['restorationDraught'], {hp:37}, 29],
+  ]) {
+    const run = createShoppingGame();
+    run(`state.exp = expForLevel(3);
+      for (const id of ${JSON.stringify(ids)}) addToCart(id);
+      checkout(); finishShopping(); selectCustomer(state.queue[0].id);
+      state.active.needs = Object.entries(${JSON.stringify(needs)}).map(([attr,target]) => ({attr,target,prio:2}));
+      chooseBox('medium');
+      for (const id of ${JSON.stringify(ids)}) packItem(id);`);
+    assert.equal(run('quality()'), 1);
+    assert.equal(run('usedSlots()'), ids.length);
+    assert.equal(run('state.gold'), 500 - cost);
+    assert.deepEqual(JSON.parse(run('JSON.stringify(totals())')), needs);
+    if (ids.length < 5) {
+      const extra = { melee: 'dag', armor: 'leatherCap', hp: 'bandage' }[Object.keys(needs)[0]];
+      run(`globalThis.goldReward = rewardFor(quality(), state.active).gold;
+        state.inventory['${extra}'] = 1; packItem('${extra}');`);
+      assert.equal(run('quality()'), 1);
+      assert.equal(run('rewardFor(quality(), state.active).gold'), run('goldReward'));
+    }
+  }
+});
+
+test('the expanded catalog is staged, future shop items are collapsed, and new customer rewards obey unlocks', () => {
+  const run = createGame();
+  assert.ok(run('ITEMS.length') >= 20 && run('ITEMS.length') <= 25);
+  run('state.shopping = true; render();');
+  assert.match(run("$('shop').innerHTML"), /<details class="locked-items"><summary>Später freischalten/);
+  assert.doesNotMatch(run("$('shop').innerHTML"), /<details class="locked-items" open/);
+  assert.equal(run('ITEMS.filter(isUnlocked).length'), 4);
+  run(`state.exp = expForLevel(2); render();
+    globalThis.rollCustomerTier = () => CUSTOMER_TIERS.find(tier => tier.id === 'wannabe');
+    Math.random = () => .99999;
+    globalThis.customer = generateCustomer();`);
+  assert.equal(run('customer.itemReward.item.id'), 'sparkStone');
+  run(`state.exp = expForLevel(5);
+    globalThis.rollCustomerTier = () => CUSTOMER_TIERS.find(tier => tier.id === 'adventurer');
+    customer = generateCustomer();`);
+  assert.equal(run('customer.itemReward.item.id'), 'vampiricDagger');
+  assert.equal(run('isUnlocked(customer.itemReward.item)'), true);
+  run('state.exp = expForLevel(2); customer = generateCustomer();');
+  assert.equal(run('customer.itemReward.item.id'), 'sword');
+});
+
+test('fine-grained recipes at an exact weighted reward threshold are not rejected by floating-point noise', () => {
+  const run = createShoppingGame();
+  run(`globalThis.rollCustomerTier = () => CUSTOMER_TIERS.find(tier => tier.id === 'adventurer');
+    state.queue = [generateCustomer()];
+    addToCart('shield'); addToCart('buckler'); addToCart('sparkStone');
+    checkout(); finishShopping(); selectCustomer(state.queue[0].id); chooseBox('medium');
+    state.active.needs = [{attr:'armor', target:20, prio:3}, {attr:'magic', target:10, prio:1}];
+    packItem('shield'); packItem('buckler'); packItem('sparkStone');`);
+  assert.equal(run('quality()'), 0.7);
+  assert.match(run("$('preview').innerHTML"), /Aktuell: 70%/);
+  assert.ok(run('rewardFor(quality(), state.active).item'));
+  run('send()');
+  assert.equal(run('state.streak'), 2);
+  assert.equal(run('Object.values(state.inventory).reduce((a,b) => a+b,0)'), 1);
+  run(`$('next').onclick(); state.queue = [generateCustomer()];
+    state.inventory = {plate:1, steelShield:1, shield:1, buckler:1};
+    selectCustomer(state.queue[0].id); chooseBox('medium');
+    state.active.needs = [{attr:'armor', target:100, prio:1}];
+    for (const id of ['plate','steelShield','shield','buckler']) packItem(id);`);
+  assert.equal(run('quality()'), 0.58);
+  assert.match(run("$('preview').innerHTML"), /Aktuell: 58%/);
 });
