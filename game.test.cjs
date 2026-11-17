@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const vm = require('node:vm');
 
-function createGame() {
+function createGame(options = {}) {
   const elements = new Map();
   const context = vm.createContext({
     matchMedia: () => ({ matches: false, addEventListener() {} }),
@@ -18,12 +18,14 @@ function createGame() {
             addEventListener() {},
             showModal() { this.open = true; },
             close() { this.open = false; },
+            focus() {},
           });
         }
         return elements.get(id);
       },
     },
     localStorage: { getItem: () => null },
+    confirm: options.confirm || (() => true),
     performance: { now: () => 0 },
     setInterval() {},
   });
@@ -33,7 +35,11 @@ function createGame() {
 
 test('purchases fill inventory without a customer or box; packing spends no gold', () => {
   const run = createGame();
-  run("buy('pot1'); buy('pot1');");
+  run("addToCart('pot1'); addToCart('pot1');");
+  assert.equal(run('state.gold'), 100);
+  assert.equal(run('state.cart.pot1'), 2);
+  assert.equal(run('state.inventory.pot1'), undefined);
+  run('checkout()');
   assert.equal(run('state.gold'), 90);
   assert.equal(run('state.inventory.pot1'), 2);
   assert.equal(run('state.box.length'), 0);
@@ -52,22 +58,22 @@ test('purchases fill inventory without a customer or box; packing spends no gold
 
 test('inventory and weight limit packing; merchant is unavailable during the round', () => {
   const run = createGame();
-  run("for (let i = 0; i < 12; i++) buy('pot1'); finishShopping(); selectCustomer(state.queue[0].id); chooseBox('small');");
+  run("for (let i = 0; i < 12; i++) addToCart('pot1'); checkout(); finishShopping(); selectCustomer(state.queue[0].id); chooseBox('small');");
   run("for (let i = 0; i < 12; i++) packItem('pot1');");
   assert.equal(run('usedWeight()'), 10);
   assert.equal(run('state.inventory.pot1'), 2);
-  run("buy('pot1')");
+  run("addToCart('pot1'); checkout()");
   assert.equal(run('state.inventory.pot1'), 2);
   assert.equal(run('state.box.length'), 10);
   run("packItem('wand')");
   assert.equal(run('state.box.length'), 10);
-  run("buy('pot3')");
+  run("addToCart('pot3'); checkout()");
   assert.equal(run('state.gold'), 40);
 });
 
 test('box and customer switches return items; sending consumes only packed items', () => {
   const run = createGame();
-  run("buy('pot1'); buy('pot1'); finishShopping(); selectCustomer(state.queue[0].id); chooseBox('small'); packItem('pot1');");
+  run("addToCart('pot1'); addToCart('pot1'); checkout(); finishShopping(); selectCustomer(state.queue[0].id); chooseBox('small'); packItem('pot1');");
   run("chooseBox('small')");
   assert.equal(run('state.box.length'), 1);
   run("state.exp = 60; chooseBox('medium');");
@@ -77,7 +83,7 @@ test('box and customer switches return items; sending consumes only packed items
   assert.equal(run('state.box.length'), 0);
   assert.equal(run('state.inventory.pot1'), 2);
   assert.equal(run('state.gold'), 90);
-  run("chooseBox('small'); packItem('pot1'); globalThis.expectedGold = state.gold + rewardFor(quality(), state.active).gold; send();");
+  run("chooseBox('small'); packItem('pot1'); state.active.itemRewards = []; globalThis.expectedGold = state.gold + rewardFor(quality(), state.active).gold; send();");
   assert.equal(run('state.gold'), run('expectedGold'));
   assert.equal(run('state.inventory.pot1'), 1);
   assert.equal(run('state.box.length'), 0);
@@ -105,7 +111,7 @@ test('advertised reward stays fixed and sending grants exactly one item once', (
   const run = createGame();
   run(`globalThis.rollRarity = () => 'epic';
     state.queue = [generateCustomer()];
-    buy('pot1'); finishShopping();
+    addToCart('pot1'); checkout(); finishShopping();
     selectCustomer(state.queue[0].id);
     state.active.needs = [{ attr: 'hp', target: 10, prio: 3 }];
     chooseBox('small');
@@ -124,7 +130,7 @@ test('advertised reward stays fixed and sending grants exactly one item once', (
 
 test('empty or irrelevant boxes grant no items', () => {
   const run = createGame();
-  run(`buy('wand'); finishShopping(); selectCustomer(state.queue[0].id); chooseBox('small'); send();`);
+  run(`addToCart('wand'); checkout(); finishShopping(); selectCustomer(state.queue[0].id); chooseBox('small'); send();`);
   assert.equal(run('state.inventory.wand'), 1);
   run(`$('next').onclick(); selectCustomer(state.queue[0].id);
     state.active.needs = [{ attr: 'hp', target: 10, prio: 3 }];
@@ -146,7 +152,7 @@ test('merchant pauses customers, blocks selection, and returns after exactly fiv
       assert.equal(run('state.completed'), i % 5);
       run("$('next').onclick()");
     }
-    run('buy("pot1")');
+    run('addToCart("pot1"); checkout()');
     assert.equal(run('state.inventory.pot1'), cycle + 1);
     run('finishShopping()');
   }
@@ -202,7 +208,7 @@ test('desktop selection keeps panels visible while mobile retains auto-collapse'
 test('merchant dialog opens at the start and after the fifth result, and closes when shopping ends', () => {
   const run = createGame();
   assert.equal(run("$('shopDialog').open"), true);
-  run("buy('pot1')");
+  run("addToCart('pot1'); checkout()");
   assert.equal(run("$('shopDialog').open"), true);
   assert.equal(run("$('shopGold').textContent"), 95);
   run('finishShopping()');
@@ -215,4 +221,43 @@ test('merchant dialog opens at the start and after the fifth result, and closes 
   assert.equal(run("$('shopDialog').open"), true);
   run('finishShopping()');
   assert.equal(run("$('shopDialog').open"), false);
+});
+
+test('cart quantities track stock, remain staged until checkout, and over-budget checkout changes nothing', () => {
+  const run = createGame();
+  run("state.inventory.pot1 = 2; addToCart('pot1'); addToCart('pot2');");
+  assert.equal(run('state.gold'), 100);
+  assert.equal(run('state.inventory.pot1'), 2);
+  assert.equal(run('state.cart.pot1'), 1);
+  assert.match(run("$('shop').innerHTML"), /Im Lager: 2 · Im Warenkorb: 1/);
+  assert.match(run("$('cart').innerHTML"), /Im Lager: 2 · Im Warenkorb: 1/);
+  assert.equal(run("$('checkoutTotal').textContent"), '23 Gold');
+  run("removeFromCart('pot1')");
+  assert.equal(run('state.cart.pot1'), undefined);
+  assert.equal(run('state.inventory.pot1'), 2);
+  assert.equal(run("$('checkoutTotal').textContent"), '18 Gold');
+  run("state.gold = 10; addToCart('pot1'); addToCart('pot2'); checkout();");
+  assert.equal(run('state.gold'), 10);
+  assert.equal(run('state.inventory.pot1'), 2);
+  assert.equal(run('state.inventory.pot2'), undefined);
+  assert.equal(run("$('checkout').disabled"), true);
+  assert.match(run("$('checkoutMessage').textContent"), /Es fehlen 31 Gold/);
+  run("removeFromCart('pot2'); removeFromCart('pot2'); checkout()");
+  assert.equal(run('state.gold'), 5);
+  assert.equal(run('state.inventory.pot1'), 3);
+  assert.equal(run('state.cart.pot1'), undefined);
+  assert.equal(run('state.cart.pot2'), undefined);
+});
+
+test('ending shopping with staged items asks before discarding them', () => {
+  let confirmed = false;
+  const run = createGame({ confirm: () => confirmed });
+  run("addToCart('pot1'); finishShopping()");
+  assert.equal(run('state.shopping'), true);
+  assert.equal(run('state.cart.pot1'), 1);
+  confirmed = true;
+  run('finishShopping()');
+  assert.equal(run('state.shopping'), false);
+  assert.equal(run('state.cart.pot1'), undefined);
+  assert.equal(run('state.gold'), 100);
 });

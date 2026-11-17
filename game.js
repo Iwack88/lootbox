@@ -103,7 +103,7 @@ function generateCustomer() {
 }
 
 const state = {
-  gold: 100, exp: 0, inventory: {}, boxType: null, box: [], active: null, queue: [], spawnT: 0,
+  gold: 100, exp: 0, inventory: {}, cart: {}, boxType: null, box: [], active: null, queue: [], spawnT: 0,
   shopping: true, completed: 0, debt: 0, showingResult: false,
 };
 
@@ -143,22 +143,50 @@ function returnBoxToInventory() {
   state.box = [];
 }
 
-function buy(id) {
+const cartQuantity = () => Object.values(state.cart).reduce((sum, quantity) => sum + quantity, 0);
+
+const cartTotal = () => ITEMS.reduce((sum, item) => sum + item.cost * (state.cart[item.id] || 0), 0);
+
+function addToCart(id) {
   const it = ITEMS.find(i => i.id === id);
-  if (!state.shopping || !it || state.gold < it.cost) return;
+  if (!state.shopping || !it) return;
   const restoreFocus = document.activeElement?.closest('#shop .shop-item')?.dataset.id === id;
-  state.gold -= it.cost;
-  state.inventory[id] = (state.inventory[id] || 0) + 1;
+  $('checkoutMessage').textContent = '';
+  state.cart[id] = (state.cart[id] || 0) + 1;
   render();
   if (restoreFocus) {
     const button = $('shop').querySelector(`[data-id="${id}"]`);
-    (button.disabled ? $('finishShopping') : button).focus();
+    button?.focus();
   }
+}
+
+function removeFromCart(id) {
+  if (!state.shopping || !state.cart[id]) return;
+  $('checkoutMessage').textContent = '';
+  state.cart[id]--;
+  if (state.cart[id] === 0) delete state.cart[id];
+  render();
+}
+
+function checkout() {
+  if (!state.shopping || cartQuantity() === 0 || cartTotal() > state.gold) return;
+  const total = cartTotal();
+  const purchases = Object.entries(state.cart);
+  state.gold -= total;
+  for (const [id, quantity] of purchases) {
+    state.inventory[id] = (state.inventory[id] || 0) + quantity;
+  }
+  state.cart = {};
+  $('checkoutMessage').textContent = `Einkauf abgeschlossen: ${total} Gold bezahlt.`;
+  render();
 }
 
 function finishShopping() {
   if (!state.shopping) return;
+  if (cartQuantity() > 0 && !confirm('Warenkorb verwerfen und Einkauf beenden?')) return;
+  state.cart = {};
   state.shopping = false;
+  $('checkoutMessage').textContent = '';
   $('queueCard').open = true;
   render();
 }
@@ -327,6 +355,14 @@ function render() {
   $('debtInfo').textContent = state.debt ? `Offener Vorschuss: ${state.debt} Gold` : '';
   $('finishShopping').hidden = !state.shopping;
   $('finishShopping').disabled = state.showingResult;
+  $('checkoutTotal').textContent = `${cartTotal()} Gold`;
+  $('cartCount').textContent = cartQuantity() ? `(${cartQuantity()})` : '';
+  $('checkout').disabled = !state.shopping || cartQuantity() === 0 || cartTotal() > state.gold;
+  $('checkoutMessage').textContent ||= '';
+  $('checkoutMessage').classList.toggle('error', cartQuantity() > 0 && cartTotal() > state.gold);
+  $('checkoutMessage').textContent = cartQuantity() > 0 && cartTotal() > state.gold
+    ? `Es fehlen ${cartTotal() - state.gold} Gold. Passe den Warenkorb an.`
+    : $('checkoutMessage').textContent;
   $('shopHint').textContent = state.shopping
     ? 'Kaufe Vorräte für fünf Aufträge. Jeder Kauf landet im Inventar. Mit „Einkauf beenden“ startet die Runde.'
     : 'Der Händler kommt nach fünf abgeschlossenen Aufträgen wieder. Nutze bis dahin dein Inventar oder den Notfall-Restock.';
@@ -363,14 +399,24 @@ function render() {
   $('send').disabled = state.shopping || state.showingResult || !c || !state.boxType;
 
   $('shop').innerHTML = state.shopping ? ITEMS.map(it => {
-    const off = state.gold < it.cost;
-    return `<button class="shop-item" data-id="${it.id}" ${off ? 'disabled' : ''}>
+    const inCart = state.cart[it.id] || 0;
+    return `<div class="shop-row">
       <span class="ico">${it.icon}</span>
-      <span class="txt">${it.name}<small>${ATTRS[it.attr].icon} +${it.value} · ${it.weight} kg · Lager: ${state.inventory[it.id] || 0}</small></span>
+      <span class="txt">${it.name}<small>${ATTRS[it.attr].icon} +${it.value} · ${it.weight} kg · Im Lager: ${state.inventory[it.id] || 0} · Im Warenkorb: ${inCart}</small></span>
       <span class="cost">💰 ${it.cost}</span>
-    </button>`;
+      <button class="add-item" data-id="${it.id}" aria-label="${it.name} in den Warenkorb legen">＋</button>
+    </div>`;
   }).join('') : '<div class="empty">Der Händler ist unterwegs.</div>';
-  $('shop').querySelectorAll('.shop-item').forEach(el => el.onclick = () => buy(el.dataset.id));
+  $('shop').querySelectorAll('.add-item').forEach(el => el.onclick = () => addToCart(el.dataset.id));
+  $('cart').innerHTML = cartQuantity()
+    ? ITEMS.filter(it => state.cart[it.id] > 0).map(it => `<div class="cart-row">
+        <span class="ico">${it.icon}</span>
+        <span class="txt">${it.name}<small>Im Lager: ${state.inventory[it.id] || 0} · Im Warenkorb: ${state.cart[it.id]}</small></span>
+        <span class="cost">×${state.cart[it.id]}</span>
+        <button class="remove-item" data-id="${it.id}" aria-label="${it.name} aus dem Warenkorb entfernen">−</button>
+      </div>`).join('')
+    : '<div class="empty">Der Warenkorb ist leer.</div>';
+  $('cart').querySelectorAll('.remove-item').forEach(el => el.onclick = () => removeFromCart(el.dataset.id));
   const shopDialog = $('shopDialog');
   if (state.shopping && !state.showingResult && !shopDialog.open) shopDialog.showModal();
   else if ((!state.shopping || state.showingResult) && shopDialog.open) shopDialog.close();
@@ -426,6 +472,7 @@ renderAuto();
 
 $('send').onclick = send;
 $('finishShopping').onclick = finishShopping;
+$('checkout').onclick = checkout;
 $('shopDialog').addEventListener('cancel', event => event.preventDefault());
 $('restock').onclick = emergencyRestock;
 for (let i = 0; i < 3; i++) state.queue.push(generateCustomer());
