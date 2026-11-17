@@ -59,6 +59,10 @@ const RARITY = {
 };
 const QUEUE_SIZE = 3;
 const SPAWN_INTERVAL = 5;
+const MERCHANT_INTERVAL = 5;
+const RESTOCK_COST = 20;
+const RESTOCK_SIZE = 3;
+const RESTOCK_IDS = ['pot1', 'dag', 'shield', 'wand'];
 const ITEM_REWARDS = [
   { quality: 0.3, rarities: ['common', 'rare', 'epic'], ids: ['pot1', 'dag', 'shield', 'wand'] },
   { quality: 0.6, rarities: ['rare', 'epic'], ids: ['pot2', 'sword'] },
@@ -90,7 +94,10 @@ function generateCustomer() {
   return { id: nextId++, name: pick(NAMES), cls: base.cls, icon: base.icon, needs, rarity, itemRewards, timeLeft: def.time, maxTime: def.time };
 }
 
-const state = { gold: 100, exp: 0, inventory: {}, boxType: null, box: [], active: null, queue: [], spawnT: 0 };
+const state = {
+  gold: 100, exp: 0, inventory: {}, boxType: null, box: [], active: null, queue: [], spawnT: 0,
+  shopping: true, completed: 0, debt: 0, showingResult: false,
+};
 
 const capacity = () => state.boxType ? state.boxType.capacity : 0;
 
@@ -130,9 +137,32 @@ function returnBoxToInventory() {
 
 function buy(id) {
   const it = ITEMS.find(i => i.id === id);
-  if (!it || state.gold < it.cost) return;
+  if (!state.shopping || !it || state.gold < it.cost) return;
   state.gold -= it.cost;
   state.inventory[id] = (state.inventory[id] || 0) + 1;
+  render();
+}
+
+function finishShopping() {
+  if (!state.shopping) return;
+  state.shopping = false;
+  $('shopCard').open = false;
+  $('queueCard').open = true;
+  render();
+}
+
+function emergencyRestock() {
+  if (state.shopping || state.showingResult || (state.debt > 0 && state.gold < RESTOCK_COST)) return;
+  const first = pick(RESTOCK_IDS);
+  const second = pick(RESTOCK_IDS.filter(id => id !== first));
+  const ids = [first, second];
+  while (ids.length < RESTOCK_SIZE) ids.push(pick(RESTOCK_IDS));
+  const paid = Math.min(state.gold, RESTOCK_COST);
+  state.gold -= paid;
+  state.debt += RESTOCK_COST - paid;
+  for (const id of ids) state.inventory[id] = (state.inventory[id] || 0) + 1;
+  $('restockResult').textContent = 'Erhalten: ' + ids.map(id => ITEMS.find(it => it.id === id).name).join(', ');
+  $('inventoryCard').open = true;
   render();
 }
 
@@ -152,6 +182,7 @@ function removeFromBox(index) {
 
 // Der bisher aktive Kunde nimmt den Platz des gewählten in der Liste ein; seine Zeit läuft dort weiter.
 function selectCustomer(id) {
+  if (state.shopping || state.showingResult) return;
   const i = state.queue.findIndex(c => c.id === id);
   if (i < 0) return;
   const chosen = state.queue[i];
@@ -180,31 +211,44 @@ function chooseBox(id) {
 }
 
 function send() {
-  if (!state.active || !state.boxType) return;
+  if (state.shopping || state.showingResult || !state.active || !state.boxType) return;
   const q = quality();
   const r = rewardFor(q, state.active);
-  state.gold += r.gold;
+  const repayment = Math.min(state.debt, r.gold);
+  state.debt -= repayment;
+  state.gold += r.gold - repayment;
   state.exp += r.exp;
   if (r.item) state.inventory[r.item.id] = (state.inventory[r.item.id] || 0) + 1;
   state.box = [];
   state.boxType = null;
   state.active = null;
+  state.completed++;
+  state.showingResult = true;
+  if (state.completed === MERCHANT_INTERVAL) {
+    state.completed = 0;
+    state.shopping = true;
+  }
   const label = q >= 0.9 ? 'Perfekt!' : q >= 0.6 ? 'Gut' : q >= 0.3 ? 'Geht so' : 'Schlecht';
   $('result').innerHTML = `
     <h1>${label}</h1>
     <div>Erfüllung: ${Math.round(q * 100)}%</div>
     <div>💰 +${r.gold} &nbsp; ⭐ +${r.exp}</div>
+    ${repayment ? `<div>Vorschuss-Rückzahlung: −${repayment} Gold · Ausgezahlt: ${r.gold - repayment} Gold</div>` : ''}
     <div>${r.item ? `Inventar: +1 ${r.item.icon} ${r.item.name}` : 'Keine Itembelohnung (ab 30% Erfüllung)'}</div>
-    <button class="primary" id="next">Weiter</button>`;
+    <button class="primary" id="next">${state.shopping ? 'Zum Händler' : 'Weiter'}</button>`;
+  render();
   $('result').classList.remove('hidden');
   $('next').onclick = () => {
+    state.showingResult = false;
     $('result').classList.add('hidden');
-    if (autoCollapse) $('queueCard').open = true;
+    if (state.shopping) $('shopCard').open = true;
+    else if (autoCollapse) $('queueCard').open = true;
     render();
   };
 }
 
 function tick(dt) {
+  if (state.shopping || state.showingResult) return;
   let changed = false;
   for (const c of state.queue) c.timeLeft -= dt;
   const before = state.queue.length;
@@ -250,7 +294,7 @@ function renderQueue() {
   $('queue').innerHTML = state.queue.length ? state.queue.map(c => {
     const needs = c.needs.map(n => `<span class="need-icons">${ATTRS[n.attr].icon.repeat(n.prio)}</span>`).join('');
     const m = RARITY[c.rarity].mult;
-    return `<button class="queue-item r-${c.rarity}" data-cid="${c.id}">
+    return `<button class="queue-item r-${c.rarity}" data-cid="${c.id}" ${state.shopping || state.showingResult ? 'disabled' : ''}>
       <span class="ico">${c.icon}</span>
       <span class="txt">${c.name} <small>${c.cls}</small><span class="needs">${needs}</span>${itemRewardsHtml(c)}</span>
       <span class="mult">${m > 1 ? '×' + m : ''}</span>
@@ -266,6 +310,17 @@ function render() {
   const c = state.active;
   $('gold').textContent = state.gold;
   $('exp').textContent = state.exp;
+  $('merchantStatus').textContent = state.shopping ? 'Händler da · Kundentimer pausiert' : `Händler in ${MERCHANT_INTERVAL - state.completed} Aufträgen`;
+  $('merchantProgress').value = state.shopping ? MERCHANT_INTERVAL : state.completed;
+  $('debtInfo').textContent = state.debt ? `Offener Vorschuss: ${state.debt} Gold` : '';
+  $('finishShopping').hidden = !state.shopping;
+  $('finishShopping').disabled = state.showingResult;
+  $('shopHint').textContent = state.shopping
+    ? 'Kaufe Vorräte für fünf Aufträge. Jeder Kauf landet im Inventar. Mit „Einkauf beenden“ startet die Runde.'
+    : 'Der Händler kommt nach fünf abgeschlossenen Aufträgen wieder. Nutze bis dahin dein Inventar oder den Notfall-Restock.';
+  $('restock').disabled = state.shopping || state.showingResult || (state.debt > 0 && state.gold < RESTOCK_COST);
+  $('restock').textContent = `Notfall-Restock · ${RESTOCK_COST} Gold`;
+  $('restockHint').textContent = `${RESTOCK_SIZE} zufällige Basis-Items: kleiner Heiltrank, Dolch, Holzschild oder Zauberstab. Mindestens zwei Attribute. Fehlendes Gold wird als Vorschuss mit künftigen Goldbelohnungen verrechnet. ${state.debt ? 'Kein weiterer Vorschuss, bis die offene Gebühr bezahlt ist.' : ''}`;
 
   $('customer').innerHTML = c
     ? `<div class="cust-name r-${c.rarity}">${c.icon} ${c.name} <small>${c.cls} · ${RARITY[c.rarity].label}</small></div>` + needsHtml(c, totals()) + itemRewardsHtml(c)
@@ -283,24 +338,26 @@ function render() {
   if (c) {
     const q = quality(), r = rewardFor(q, c);
     const itemCost = state.box.reduce((sum, item) => sum + item.cost, 0);
-    const netGold = r.gold - itemCost;
+    const repayment = Math.min(state.debt, r.gold);
+    const netGold = r.gold - itemCost - repayment;
     $('preview').innerHTML = `Aktuell: ${Math.round(q * 100)}% → 💰 ${r.gold}  ⭐ ${r.exp}<br>
       <span class="item-cost">Itemkosten: ${itemCost} 💰</span>
-      <span class="net-gold${netGold < 0 ? ' loss' : ''}"> · Netto: ${netGold >= 0 ? '+' : ''}${netGold} 💰</span><br>
+      <span class="net-gold${netGold < 0 ? ' loss' : ''}"> · Netto: ${netGold >= 0 ? '+' : ''}${netGold} 💰</span>
+      ${repayment ? `<br>Davon Vorschuss-Rückzahlung: ${repayment} Gold (im Netto berücksichtigt)` : ''}<br>
       ${r.item ? `Itembelohnung: +1 ${r.item.icon} ${r.item.name}` : 'Itembelohnung ab 30% Erfüllung'}`;
   } else {
     $('preview').textContent = '';
   }
-  $('send').disabled = !c || !state.boxType;
+  $('send').disabled = state.shopping || state.showingResult || !c || !state.boxType;
 
-  $('shop').innerHTML = ITEMS.map(it => {
+  $('shop').innerHTML = state.shopping ? ITEMS.map(it => {
     const off = state.gold < it.cost;
     return `<button class="shop-item" data-id="${it.id}" ${off ? 'disabled' : ''}>
       <span class="ico">${it.icon}</span>
       <span class="txt">${it.name}<small>${ATTRS[it.attr].icon} +${it.value} · ${it.weight} kg · Lager: ${state.inventory[it.id] || 0}</small></span>
       <span class="cost">💰 ${it.cost}</span>
     </button>`;
-  }).join('');
+  }).join('') : '<div class="empty">Der Händler ist unterwegs.</div>';
   $('shop').querySelectorAll('.shop-item').forEach(el => el.onclick = () => buy(el.dataset.id));
   renderInventory();
   renderPicker();
@@ -320,7 +377,7 @@ function renderInventory() {
           <span class="cost">×${state.inventory[it.id]}</span>
         </button>`;
       }).join('')
-    : '<div class="empty">Dein Lager ist leer. Kaufe Vorräte im Shop.</div>';
+    : `<div class="empty">${state.shopping ? 'Dein Lager ist leer. Kaufe Vorräte im Shop.' : 'Dein Lager ist leer. Nutze den Notfall-Restock.'}</div>`;
   $('inventory').querySelectorAll('.shop-item').forEach(el => el.onclick = () => packItem(el.dataset.id));
 }
 
@@ -353,6 +410,8 @@ $('autoToggle').onclick = e => {
 renderAuto();
 
 $('send').onclick = send;
+$('finishShopping').onclick = finishShopping;
+$('restock').onclick = emergencyRestock;
 for (let i = 0; i < 3; i++) state.queue.push(generateCustomer());
 render();
 let lastT = performance.now();

@@ -6,13 +6,19 @@
 <meta name="theme-color" content="#1b1a2e">
 <meta http-equiv="Cache-Control" content="no-cache">
 <title>Lootbox Packer</title>
-<link rel="stylesheet" href="style.css?v=6">
+<link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
 <header>
   <span>💰 <b id="gold">0</b></span>
   <span>⭐ EXP <b id="exp">0</b></span>
 </header>
+
+<div class="merchant-status">
+  <span id="merchantStatus"></span>
+  <progress id="merchantProgress" max="5" value="0" aria-label="Fortschritt bis zum Händler"></progress>
+  <span id="debtInfo"></span>
+</div>
 
 <details class="card" id="queueCard" open>
   <summary>Kunden <small id="queueInfo"></small><span class="auto" id="autoToggle"></span></summary>
@@ -40,17 +46,23 @@
   <summary>Inventar <small id="inventoryInfo"></small></summary>
   <p class="hint">Tippe auf ein Item, um es einzupacken. Entfernte Items gehen zurück ins Lager.</p>
   <div id="inventory" class="shop"></div>
+  <div class="restock-panel">
+    <button id="restock" class="primary">Notfall-Restock</button>
+    <p id="restockHint" class="hint"></p>
+    <div id="restockResult" role="status"></div>
+  </div>
 </details>
 
 <details class="card" id="shopCard" open>
   <summary>Shop</summary>
-  <p class="hint">Jeder Kauf legt ein Item in dein Inventar, nicht direkt in die Box.</p>
+  <p id="shopHint" class="hint"></p>
   <div id="shop" class="shop"></div>
+  <button id="finishShopping" class="primary">Einkauf beenden</button>
 </details>
 
 <button id="send" class="primary fab">📦 Absenden</button>
 
 <div id="result" class="overlay hidden"></div>
-<script src="game.js?v=6"></script>
+<script src="game.js?v=7"></script>
 </body>
 </html>

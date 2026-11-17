@@ -29,6 +29,16 @@ small { opacity: .7; font-weight: 400; }
 .box-item .kg { opacity: .8; }
 .empty { text-align: center; opacity: .5; font-size: 14px; padding: 10px; }
 .hint { margin: 0 0 10px; font-size: 13px; opacity: .8; }
+.merchant-status { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.merchant-status progress { width: 100%; accent-color: #ffd166; }
+#debtInfo { color: #ff6b6b; }
+.restock-panel { border-top: 1px solid #3a3860; margin-top: 14px; padding-top: 14px; }
+.restock-panel .hint { margin: 8px 0; }
+#restockResult { font-size: 13px; color: #ffd166; }
+#finishShopping { margin-top: 12px; }
+button[hidden] { display: none; }
+.queue-item:disabled { opacity: .6; }
+.overlay { z-index: 10; }
 .reward-offer { display: block; margin-top: 6px; font-size: 12px; line-height: 1.5; color: #ffd166; }
 .preview { margin: 10px 0; font-size: 14px; text-align: center; opacity: .85; }
 .preview .item-cost { color: #ff6b6b; }

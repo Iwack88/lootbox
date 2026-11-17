@@ -7,6 +7,7 @@ function createGame() {
   const elements = new Map();
   const context = vm.createContext({
     document: {
+      querySelector: () => null,
       getElementById(id) {
         if (!elements.has(id)) {
           elements.set(id, {
@@ -34,7 +35,7 @@ test('purchases fill inventory without a customer or box; packing spends no gold
   assert.equal(run('state.box.length'), 0);
   run("packItem('pot1')");
   assert.equal(run('state.inventory.pot1'), 2);
-  run("selectCustomer(state.queue[0].id); chooseBox('small'); packItem('pot1');");
+  run("finishShopping(); selectCustomer(state.queue[0].id); chooseBox('small'); packItem('pot1');");
   assert.equal(run('state.inventory.pot1'), 1);
   assert.equal(run('state.box.length'), 1);
   assert.equal(run('state.gold'), 90);
@@ -45,24 +46,24 @@ test('purchases fill inventory without a customer or box; packing spends no gold
   assert.match(run("$('preview').innerHTML"), /Itemkosten: 0/);
 });
 
-test('inventory and weight limit packing, not shopping', () => {
+test('inventory and weight limit packing; merchant is unavailable during the round', () => {
   const run = createGame();
-  run("for (let i = 0; i < 12; i++) buy('pot1'); selectCustomer(state.queue[0].id); chooseBox('small');");
+  run("for (let i = 0; i < 12; i++) buy('pot1'); finishShopping(); selectCustomer(state.queue[0].id); chooseBox('small');");
   run("for (let i = 0; i < 12; i++) packItem('pot1');");
   assert.equal(run('usedWeight()'), 10);
   assert.equal(run('state.inventory.pot1'), 2);
   run("buy('pot1')");
-  assert.equal(run('state.inventory.pot1'), 3);
+  assert.equal(run('state.inventory.pot1'), 2);
   assert.equal(run('state.box.length'), 10);
   run("packItem('wand')");
   assert.equal(run('state.box.length'), 10);
   run("buy('pot3')");
-  assert.equal(run('state.gold'), 35);
+  assert.equal(run('state.gold'), 40);
 });
 
 test('box and customer switches return items; sending consumes only packed items', () => {
   const run = createGame();
-  run("buy('pot1'); buy('pot1'); selectCustomer(state.queue[0].id); chooseBox('small'); packItem('pot1');");
+  run("buy('pot1'); buy('pot1'); finishShopping(); selectCustomer(state.queue[0].id); chooseBox('small'); packItem('pot1');");
   run("chooseBox('small')");
   assert.equal(run('state.box.length'), 1);
   run("state.exp = 60; chooseBox('medium');");
@@ -100,10 +101,11 @@ test('advertised reward stays fixed and sending grants exactly one item once', (
   const run = createGame();
   run(`globalThis.rollRarity = () => 'epic';
     state.queue = [generateCustomer()];
+    buy('pot1'); finishShopping();
     selectCustomer(state.queue[0].id);
     state.active.needs = [{ attr: 'hp', target: 10, prio: 3 }];
     chooseBox('small');
-    buy('pot1'); packItem('pot1');
+    packItem('pot1');
     globalThis.rewardId = rewardFor(quality(), state.active).item.id;
     globalThis.offer = JSON.stringify(state.active.itemRewards);
     render(); render();`);
@@ -118,10 +120,65 @@ test('advertised reward stays fixed and sending grants exactly one item once', (
 
 test('empty or irrelevant boxes grant no items', () => {
   const run = createGame();
-  run(`selectCustomer(state.queue[0].id); chooseBox('small'); send();`);
-  assert.equal(run('Object.values(state.inventory).reduce((a, b) => a + b, 0)'), 0);
-  run(`selectCustomer(state.queue[0].id);
+  run(`buy('wand'); finishShopping(); selectCustomer(state.queue[0].id); chooseBox('small'); send();`);
+  assert.equal(run('state.inventory.wand'), 1);
+  run(`$('next').onclick(); selectCustomer(state.queue[0].id);
     state.active.needs = [{ attr: 'hp', target: 10, prio: 3 }];
-    chooseBox('small'); buy('wand'); packItem('wand'); send();`);
+    chooseBox('small'); packItem('wand'); send();`);
   assert.equal(run('Object.values(state.inventory).reduce((a, b) => a + b, 0)'), 0);
+});
+
+test('merchant pauses customers, blocks selection, and returns after exactly five deliveries each round', () => {
+  const run = createGame();
+  run('globalThis.initialTime = state.queue[0].timeLeft; tick(10); selectCustomer(state.queue[0].id);');
+  assert.equal(run('state.queue[0].timeLeft'), run('initialTime'));
+  assert.equal(run('state.active'), null);
+  run('finishShopping(); tick(1);');
+  assert.equal(run('state.queue[0].timeLeft'), run('initialTime - 1'));
+  for (let cycle = 0; cycle < 2; cycle++) {
+    for (let i = 1; i <= 5; i++) {
+      run("state.queue = [generateCustomer()]; selectCustomer(state.queue[0].id); chooseBox('small'); send();");
+      assert.equal(run('state.shopping'), i === 5);
+      assert.equal(run('state.completed'), i % 5);
+      run("$('next').onclick()");
+    }
+    run('buy("pot1")');
+    assert.equal(run('state.inventory.pot1'), cycle + 1);
+    run('finishShopping()');
+  }
+});
+
+test('emergency package costs gold and contains three basic items across at least two attributes', () => {
+  const run = createGame();
+  run('emergencyRestock()');
+  assert.equal(run('state.gold'), 100);
+  run('finishShopping()');
+  for (let i = 0; i < 5; i++) {
+    run('state.inventory = {}; emergencyRestock();');
+    assert.equal(run('Object.values(state.inventory).reduce((a, b) => a + b, 0)'), 3);
+    assert.equal(run('Object.keys(state.inventory).every(id => RESTOCK_IDS.includes(id))'), true);
+    assert.ok(run('new Set(Object.keys(state.inventory).map(id => ITEMS.find(it => it.id === id).attr)).size') >= 2);
+  }
+  assert.equal(run('state.gold'), 0);
+  assert.equal(run('state.debt'), 0);
+});
+
+test('restock advances only missing gold and debt is deducted from rewards without repeat credit', () => {
+  const run = createGame();
+  run('finishShopping(); state.gold = 7; emergencyRestock();');
+  assert.equal(run('state.gold'), 0);
+  assert.equal(run('state.debt'), 13);
+  run('emergencyRestock()');
+  assert.equal(run('Object.values(state.inventory).reduce((a, b) => a + b, 0)'), 3);
+  run(`state.queue = [generateCustomer()]; state.queue[0].rarity = 'common';
+    selectCustomer(state.queue[0].id); chooseBox('small'); send();`);
+  assert.equal(run('state.debt'), 3);
+  assert.equal(run('state.gold'), 0);
+  assert.match(run("$('result').innerHTML"), /Ausgezahlt: 0 Gold/);
+  run(`$('next').onclick(); state.queue = [generateCustomer()]; state.queue[0].rarity = 'common';
+    selectCustomer(state.queue[0].id); chooseBox('small'); send();`);
+  assert.equal(run('state.debt'), 0);
+  assert.equal(run('state.gold'), 7);
+  run("$('next').onclick(); emergencyRestock()");
+  assert.equal(run('state.debt'), 13);
 });
