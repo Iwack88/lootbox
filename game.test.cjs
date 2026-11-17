@@ -256,6 +256,24 @@ test('inventory icon selection shows order details and preserves filter, stock a
   assert.equal(run('selectedSupplyItem'), null);
 });
 
+test('the options test button advances one level per click and saves normal rewards and unlocks', () => {
+  const storage = new Map();
+  const run = createMilestoneGame({ storage });
+  run("state.exp = 90; render(); $('openOptions').onclick(); $('raiseTestLevel').onclick()");
+  assert.equal(run('progression().level'), 2);
+  assert.equal(run('progression().current'), 0);
+  assert.equal(run('state.inventory.bandage'), 3);
+  assert.match(run("$('testLevelStatus').textContent"), /Level 2/);
+  run("$('raiseTestLevel').onclick(); $('raiseTestLevel').onclick()");
+  assert.equal(run("$('optionsDialog').open"), true);
+  assert.equal(run('progression().level'), 4);
+  assert.equal(run("$('openWorkshop').disabled"), false);
+  const restored = createMilestoneGame({ storage });
+  assert.equal(restored('progression().level'), 4);
+  assert.equal(restored('state.inventory.bandage'), 3);
+  assert.equal(restored("$('openWorkshop').disabled"), false);
+});
+
 test('options open and close without changing progress, and normal save messages stay inside options', () => {
   const run = createMilestoneGame();
   const saved = run('JSON.stringify(state)');

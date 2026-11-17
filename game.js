@@ -280,6 +280,16 @@ function grantLevelRewards(previousLevel, newLevel) {
   return bonuses;
 }
 
+function raiseTestLevel() {
+  syncTime();
+  const previousLevel = progression().level;
+  const newLevel = previousLevel + 1;
+  state.exp = expForLevel(newLevel);
+  const bonuses = STREAK_ENABLED ? [] : grantLevelRewards(previousLevel, newLevel);
+  sfx.play(bonuses.length ? 'checkpoint' : 'level');
+  render();
+}
+
 function renderRoadmap(selected = null) {
   const { level } = progression();
   const lastMilestone = STREAK_ENABLED ? Math.max(10, (Math.floor(level / SHOP_SLOT_INTERVAL) + 1) * SHOP_SLOT_INTERVAL,
@@ -998,6 +1008,8 @@ function render() {
   $('shopGold').textContent = state.gold;
   const progress = progression();
   $('level').textContent = progress.level;
+  const testLevelStatus = `Aktuell: Level ${progress.level}`;
+  if ($('testLevelStatus').textContent !== testLevelStatus) $('testLevelStatus').textContent = testLevelStatus;
   $('exp').textContent = `${progress.current}/${progress.required}`;
   $('levelProgress').max = progress.required;
   $('levelProgress').value = progress.current;
@@ -1387,6 +1399,7 @@ $('shopDialog').addEventListener('cancel', event => event.preventDefault());
 $('restock').onclick = emergencyRestock;
 $('openOptions').onclick = () => $('optionsDialog').showModal();
 $('closeOptions').onclick = () => $('optionsDialog').close();
+$('raiseTestLevel').onclick = raiseTestLevel;
 $('resetGame').onclick = resetGame;
 function openRoadmap(selected = null) {
   renderRoadmap(selected);
