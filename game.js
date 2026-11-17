@@ -92,14 +92,20 @@ const RESTOCK_COST = 20;
 const RESTOCK_SIZE = 3;
 const RESTOCK_IDS = ['pot1', 'dag', 'shield', 'wand'];
 const CUSTOMER_TIERS = [
-  { id: 'wannabe', label: 'Wannabe', level: 1, weight: 50, scale: 0.6, rarity: 'common', time: 120,
+  { id: 'wannabe', label: 'Wannabe', level: 1, points: 1, weight: 50, scale: 0.6, rarity: 'common', time: 120,
     reward: { quality: 0.5, ids: ['pot1', 'dag', 'shield', 'wand'] } },
-  { id: 'adventurer', label: 'Abenteurer', level: 2, weight: 32, scale: 1, rarity: 'common', time: 90,
+  { id: 'adventurer', label: 'Abenteurer', level: 2, points: 2, weight: 32, scale: 1, rarity: 'common', time: 90,
     reward: { quality: 0.7, ids: ['pot2', 'sword'] } },
-  { id: 'hero', label: 'Held', level: 5, weight: 15, scale: 1.2, rarity: 'rare', time: 75,
+  { id: 'hero', label: 'Held', level: 5, points: 3, weight: 15, scale: 1.2, rarity: 'rare', time: 75,
     reward: { quality: 0.85, ids: ['plate'] } },
-  { id: 'demigod', label: 'Demi-Gott', level: 7, weight: 3, scale: 1.5, rarity: 'epic', time: 60,
+  { id: 'demigod', label: 'Demi-Gott', level: 7, points: 4, weight: 3, scale: 1.5, rarity: 'epic', time: 60,
     reward: { quality: 1, ids: ['pot3'] } },
+];
+const CHECKPOINTS = [
+  { points: 10, icon: '🎁', title: '3 Basisitems', description: 'Drei zufällige Basisitems kommen sofort in dein Inventar.', package: 'basic' },
+  { points: 15, icon: '🏷️', title: '10 % Händlerrabatt', description: '10 % Rabatt während des gesamten nächsten Händlerbesuchs.', discount: 10 },
+  { points: 20, icon: '🎁', title: '3 bessere Items', description: 'Drei zufällige Items der höchsten bereits freigeschalteten Item-Stufe kommen sofort in dein Inventar.', package: 'best' },
+  { points: 25, icon: '🏷️', title: '15 % Händlerrabatt', description: '15 % Rabatt während eines weiteren Händlerbesuchs. Vorgemerkte Rabatte werden nacheinander genutzt, nicht addiert.', discount: 15 },
 ];
 
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
@@ -172,7 +178,68 @@ function generateCustomer() {
 const state = {
   gold: 500, exp: 0, inventory: Object.fromEntries(ITEMS.filter(item => item.level === 1).map(item => [item.id, 5])), cart: {}, boxType: null, box: [], active: null, queue: [], spawnT: 0,
   shopping: false, completed: 0, debt: 0, showingResult: false,
+  streak: 0, claimedCheckpoints: [], pendingDiscounts: [], activeDiscount: null,
 };
+
+function changeStreak(points) {
+  state.streak = Math.max(0, state.streak + points);
+  const bonuses = [];
+  if (points <= 0) return bonuses;
+  for (const checkpoint of CHECKPOINTS) {
+    if (state.streak < checkpoint.points || state.claimedCheckpoints.includes(checkpoint.points)) continue;
+    state.claimedCheckpoints.push(checkpoint.points);
+    if (checkpoint.discount) {
+      state.pendingDiscounts.push(checkpoint.points);
+      bonuses.push(`Checkpunkt ${checkpoint.points}: ${checkpoint.title} vorgemerkt.`);
+    } else {
+      const itemLevel = checkpoint.package === 'basic' ? 1 : Math.max(...ITEMS.filter(isUnlocked).map(item => item.level));
+      const pool = ITEMS.filter(item => item.level === itemLevel);
+      const items = Array.from({ length: 3 }, () => pick(pool));
+      for (const item of items) state.inventory[item.id] = (state.inventory[item.id] || 0) + 1;
+      bonuses.push(`Checkpunkt ${checkpoint.points}: ${items.map(item => `${item.icon} ${item.name}`).join(', ')} erhalten.`);
+    }
+  }
+  return bonuses;
+}
+
+function checkpointStatus(checkpoint) {
+  if (state.activeDiscount === checkpoint.points) return 'Für diesen Händlerbesuch aktiv';
+  if (state.pendingDiscounts.includes(checkpoint.points)) return 'Für kommenden Händlerbesuch vorgemerkt';
+  if (state.claimedCheckpoints.includes(checkpoint.points)) return checkpoint.discount ? 'Händlerbesuch beendet' : 'Erhalten';
+  return 'Noch nicht erreicht';
+}
+
+function renderStreak() {
+  $('streakPoints').textContent = state.streak;
+  $('streakProgress').max = CHECKPOINTS.at(-1).points;
+  $('streakProgress').value = Math.min(state.streak, CHECKPOINTS.at(-1).points);
+  const next = CHECKPOINTS.find(checkpoint => !state.claimedCheckpoints.includes(checkpoint.points));
+  $('streakNext').textContent = next ? `Nächster Bonus bei ${next.points}: ${next.title}` : 'Alle Checkpunkte erhalten – sammle weiter Punkte!';
+  $('streakCheckpoints').innerHTML = CHECKPOINTS.map(checkpoint => {
+    const claimed = state.claimedCheckpoints.includes(checkpoint.points);
+    return `<button class="checkpoint${claimed ? ' claimed' : ''}" style="left:${checkpoint.points / CHECKPOINTS.at(-1).points * 100}%" data-checkpoint="${checkpoint.points}" aria-haspopup="dialog" aria-controls="streakDialog" aria-label="Checkpunkt ${checkpoint.points} Punkte: ${checkpoint.title}. ${checkpointStatus(checkpoint)}">
+      <span>${claimed ? '✓' : checkpoint.icon}</span><b>${checkpoint.points}</b>
+    </button>`;
+  }).join('');
+  $('streakCheckpoints').querySelectorAll('[data-checkpoint]').forEach(button => {
+    button.onclick = () => openStreak(+button.dataset.checkpoint);
+  });
+  const active = discountPercent();
+  $('streakDiscounts').textContent = [
+    active ? `${active} % Rabatt beim aktuellen Händler` : '',
+    ...state.pendingDiscounts.map(points => `${CHECKPOINTS.find(checkpoint => checkpoint.points === points).discount} % Rabatt vorgemerkt`),
+  ].filter(Boolean).join(' · ');
+}
+
+function openStreak(selected = null) {
+  $('streakRules').textContent = `Punkte bei erreichter Item-Reward-Schwelle: ${CUSTOMER_TIERS.map(tier => `${tier.label} +${tier.points} (ab ${Math.round(tier.reward.quality * 100)} %)`).join(' · ')}. Geht ein wartender Kunde, verlierst du 1 Punkt, unabhängig vom Kundentyp. Schwächere Boxen geben 0 Punkte. Nie unter 0.`;
+  $('streakRewards').innerHTML = CHECKPOINTS.map(checkpoint => `<section id="checkpoint-${checkpoint.points}" tabindex="-1" class="milestone${state.claimedCheckpoints.includes(checkpoint.points) ? ' unlocked' : ''}${checkpoint.points === selected ? ' selected-checkpoint' : ''}">
+    <h3>${checkpoint.icon} ${checkpoint.points} Punkte · ${checkpoint.title}</h3>
+    <p>${checkpoint.description}</p><small>${checkpointStatus(checkpoint)}</small>
+  </section>`).join('');
+  $('streakDialog').showModal();
+  if (selected !== null) $(`checkpoint-${selected}`).focus();
+}
 
 const capacity = () => state.boxType ? state.boxType.slots : 0;
 
@@ -202,7 +269,8 @@ function quality() {
 const rewardFor = (q, c, hasPackedItems = state.box.length > 0) => {
   const m = RARITY[c.rarity].mult;
   const item = hasPackedItems && q >= c.itemReward.quality ? c.itemReward.item : null;
-  return { gold: Math.round((10 + q * 30) * m), exp: Math.round((5 + q * 15) * m), item };
+  const points = item ? CUSTOMER_TIERS.find(tier => tier.id === c.tier).points : 0;
+  return { gold: Math.round((10 + q * 30) * m), exp: Math.round((5 + q * 15) * m), item, points };
 };
 
 function boxEffectsText(box) {
@@ -221,7 +289,11 @@ function returnBoxToInventory() {
 
 const cartQuantity = () => Object.values(state.cart).reduce((sum, quantity) => sum + quantity, 0);
 
-const cartTotal = () => ITEMS.reduce((sum, item) => sum + item.cost * (state.cart[item.id] || 0), 0);
+const discountPercent = () => CHECKPOINTS.find(checkpoint => checkpoint.points === state.activeDiscount)?.discount || 0;
+
+const cartSubtotal = () => ITEMS.reduce((sum, item) => sum + item.cost * (state.cart[item.id] || 0), 0);
+
+const cartTotal = () => Math.ceil(cartSubtotal() * (100 - discountPercent()) / 100);
 
 function addToCart(id) {
   const it = ITEMS.find(i => i.id === id);
@@ -266,6 +338,7 @@ function finishShopping() {
   if (cartQuantity() > 0 && !confirm('Warenkorb verwerfen und Einkauf beenden?')) return;
   state.cart = {};
   state.shopping = false;
+  state.activeDiscount = null;
   $('checkoutMessage').textContent = '';
   $('queueCard').open = true;
   render();
@@ -349,6 +422,7 @@ function send() {
        ).join('')}</ul>`
     : '';
   if (r.item) state.inventory[r.item.id] = (state.inventory[r.item.id] || 0) + 1;
+  const bonuses = changeStreak(r.points);
   state.box = [];
   state.boxType = null;
   state.active = null;
@@ -357,13 +431,16 @@ function send() {
   if (state.completed === MERCHANT_INTERVAL) {
     state.completed = 0;
     state.shopping = true;
+    state.activeDiscount = state.pendingDiscounts.shift() || null;
   }
   const label = q >= 0.9 ? 'Perfekt!' : q >= 0.6 ? 'Gut' : q >= 0.3 ? 'Geht so' : 'Schlecht';
   $('result').innerHTML = `
     <h1>${label}</h1>
     <div>Erfüllung: ${Math.floor(q * 100)}%</div>
     <div>💰 +${r.gold} &nbsp; ⭐ +${r.exp}</div>
+    <div>Serie: +${r.points} Punkte · Gesamt: ${state.streak}</div>
     ${levelUp}
+    ${bonuses.length ? `<ul class="new-unlocks">${bonuses.map(bonus => `<li>${bonus}</li>`).join('')}</ul>` : ''}
     ${repayment ? `<div>Vorschuss-Rückzahlung: −${repayment} Gold · Ausgezahlt: ${r.gold - repayment} Gold</div>` : ''}
     ${itemRewardResult}
     <button class="primary" id="next">${state.shopping ? 'Zum Händler' : 'Weiter'}</button>`;
@@ -378,12 +455,16 @@ function send() {
 }
 
 function tick(dt) {
-  if (state.shopping || state.showingResult || $('roadmapDialog').open) return;
+  if (state.shopping || state.showingResult || $('roadmapDialog').open || $('streakDialog').open) return;
   let changed = false;
   for (const c of state.queue) c.timeLeft -= dt;
   const before = state.queue.length;
   state.queue = state.queue.filter(c => c.timeLeft > 0);
-  if (state.queue.length !== before) changed = true;
+  if (state.queue.length !== before) {
+    changeStreak(state.queue.length - before);
+    renderStreak();
+    changed = true;
+  }
 
   state.spawnT -= dt;
   if (state.spawnT <= 0 && state.queue.length < queueCapacity()) {
@@ -444,6 +525,7 @@ function renderQueue() {
 
 function render() {
   const c = state.active;
+  renderStreak();
   $('gold').textContent = state.gold;
   $('shopGold').textContent = state.gold;
   const progress = progression();
@@ -457,6 +539,11 @@ function render() {
   $('finishShopping').hidden = !state.shopping;
   $('finishShopping').disabled = state.showingResult;
   $('checkoutTotal').textContent = `${cartTotal()} Gold`;
+  const discount = discountPercent();
+  $('shopDiscount').textContent = discount
+    ? `${discount} % Serienrabatt für diesen gesamten Besuch. Rabatt auf die Warenkorbsumme; Endpreis auf ganze Gold aufgerundet.`
+    : 'Kein Serienrabatt für diesen Besuch.';
+  $('checkoutDiscount').textContent = discount ? `Serienrabatt: ${discount} % · Ersparnis: ${cartSubtotal() - cartTotal()} Gold` : '';
   $('cartCount').textContent = cartQuantity() ? `(${cartQuantity()})` : '';
   $('checkout').disabled = !state.shopping || cartQuantity() === 0 || cartTotal() > state.gold;
   $('checkoutMessage').textContent ||= '';
@@ -494,7 +581,7 @@ function render() {
       <span class="item-cost">Itemkosten: ${itemCost} 💰</span>
       <span class="net-gold${netGold < 0 ? ' loss' : ''}"> · Netto: ${netGold >= 0 ? '+' : ''}${netGold} 💰</span>
       ${repayment ? `<br>Davon Vorschuss-Rückzahlung: ${repayment} Gold (im Netto berücksichtigt)` : ''}<br>
-      ${itemRewardHtml(c, !!r.item)}`;
+      ${itemRewardHtml(c, !!r.item)}<div class="streak-preview">+${CUSTOMER_TIERS.find(tier => tier.id === c.tier).points} Serienpunkte bei Reward</div>`;
   } else {
     $('preview').textContent = '';
   }
@@ -585,6 +672,9 @@ function openRoadmap() {
 $('showRoadmap').onclick = openRoadmap;
 $('shopRoadmap').onclick = openRoadmap;
 $('closeRoadmap').onclick = () => $('roadmapDialog').close();
+$('showStreak').onclick = () => openStreak();
+$('shopStreak').onclick = () => openStreak();
+$('closeStreak').onclick = () => $('streakDialog').close();
 for (let i = 0; i < queueCapacity(); i++) state.queue.push(generateCustomer());
 render();
 let lastT = performance.now();

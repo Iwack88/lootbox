@@ -45,7 +45,18 @@ small { opacity: .7; font-weight: 400; }
 .level-status progress { width: 100%; accent-color: #6c63ff; }
 header { align-items: center; flex-wrap: wrap; gap: 10px; }
 .secondary { background: #34325c; color: #eee; border: 1px solid #6c63ff; border-radius: 9px; font: inherit; font-size: 14px; padding: 8px 12px; cursor: pointer; touch-action: manipulation; }
-#shopRoadmap { margin-bottom: 12px; }
+.shop-links { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.streak-status { flex: 1 1 100%; min-width: 0; padding: 10px 12px; border-radius: 12px; background: #26253f; font-size: 13px; }
+.streak-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.streak-track { position: relative; height: 48px; margin: 8px 22px 4px; }
+.streak-track progress { position: absolute; top: 20px; width: 100%; height: 8px; accent-color: #ffd166; }
+.streak-zero { position: absolute; top: 14px; left: 0; transform: translateX(-50%); background: #26253f; padding: 0 4px; }
+.checkpoint { position: absolute; top: 0; transform: translateX(-50%); min-width: 44px; height: 46px; padding: 3px; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px solid #8a88b0; border-radius: 9px; color: #eee; background: #34325c; font: inherit; cursor: pointer; touch-action: manipulation; }
+.checkpoint.claimed { color: #1b1a2e; background: #ffd166; border-color: #ffd166; }
+.checkpoint:focus-visible, .selected-checkpoint { outline: 2px solid #ffd166; outline-offset: 2px; }
+#streakNext, #streakDiscounts { display: block; font-size: 12px; }
+#streakDiscounts, #shopDiscount, #checkoutDiscount { color: #ffd166; }
+.streak-preview { margin-top: 4px; font-size: 12px; color: #ffd166; }
 .milestone { padding: 12px; margin-bottom: 10px; border-left: 3px solid #8a88b0; background: #34325c; border-radius: 8px; }
 .milestone.unlocked { border-left-color: #4cc38a; }
 .milestone h3 { margin: 0 0 4px; font-size: 16px; }
@@ -144,6 +155,7 @@ body { padding-bottom: 90px; }
 @media (min-width: 900px) {
   body { max-width: 1800px; padding: 24px 24px 90px; }
   header { justify-content: flex-start; gap: 32px; }
+  .streak-status { flex: 1 1 360px; max-width: 650px; margin-left: auto; }
   .merchant-status { max-width: 480px; }
   .game-layout { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 18px; }
   .panel-column { gap: 18px; }

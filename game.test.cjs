@@ -115,11 +115,11 @@ test('each customer offers one fixed reward only at its tier threshold, with inc
 });
 
 test('sending at each tier threshold consumes the box and awards exactly one item', () => {
-  for (const [tier, target, items] of [
-    ['wannabe', 20, ['pot1']],
-    ['adventurer', 50, ['pot2', 'pot1']],
-    ['hero', 100, ['pot3', 'pot2', 'pot1']],
-    ['demigod', 50, ['pot3']],
+  for (const [tier, target, items, points] of [
+    ['wannabe', 20, ['pot1'], 1],
+    ['adventurer', 50, ['pot2', 'pot1'], 2],
+    ['hero', 100, ['pot3', 'pot2', 'pot1'], 3],
+    ['demigod', 50, ['pot3'], 4],
   ]) {
     const run = createShoppingGame();
     run(`globalThis.rollCustomerTier = () => CUSTOMER_TIERS.find(t => t.id === '${tier}');
@@ -134,6 +134,7 @@ test('sending at each tier threshold consumes the box and awards exactly one ite
     run('send(); send();');
     assert.equal(run('state.inventory[rewardId]'), 1);
     assert.equal(run('Object.values(state.inventory).reduce((a, b) => a + b, 0)'), 1);
+    assert.equal(run('state.streak'), points);
     assert.match(run("$('result').innerHTML"), /✓ Reward/);
   }
 });
@@ -172,11 +173,12 @@ test('reward badges show the item icon and threshold and results explain the unm
   run('send()');
   assert.match(run("$('result').innerHTML"), /Keine Itembelohnung – benötigt: 85 %/);
   assert.equal(run('Object.values(state.inventory).reduce((a, b) => a + b, 0)'), 0);
+  assert.equal(run('state.streak'), 0);
 });
 
 test('quality shown just below a reward threshold does not round up and promise an unearned item', () => {
   const run = createGame();
-  run(`selectCustomer(state.queue[0].id); chooseBox('small');
+  run(`state.streak = 7; selectCustomer(state.queue[0].id); chooseBox('small');
     state.active.needs = [{attr:'hp', target:20.01, prio:1}];
     packItem('pot1');`);
   assert.match(run("$('preview').innerHTML"), /Aktuell: 49%/);
@@ -185,6 +187,7 @@ test('quality shown just below a reward threshold does not round up and promise 
   assert.match(run("$('result').innerHTML"), /Erfüllung: 49%/);
   assert.match(run("$('result').innerHTML"), /Keine Itembelohnung – benötigt: 50 %/);
   assert.equal(run('Object.values(state.inventory).reduce((a, b) => a + b, 0)'), 19);
+  assert.equal(run('state.streak'), 7);
 });
 
 test('empty or irrelevant boxes grant no items', () => {
@@ -450,4 +453,117 @@ test('generated customers and reward items obey level gates and increased queue 
   assert.equal(run('state.queue[0].timeLeft'), run('beforeTime'));
   run("$('closeRoadmap').onclick(); state.exp = expForLevel(3); tick(1);");
   assert.equal(run('state.queue.length'), 4);
+});
+
+test('departing customers each cost one point regardless of tier, active customers are protected, and points stop at zero', () => {
+  const run = createGame();
+  run(`state.exp = expForLevel(7); state.streak = 5;
+    selectCustomer(state.queue[0].id); state.active.timeLeft = 0.1;
+    state.queue = ['hero', 'demigod'].map(id => {
+      globalThis.rollCustomerTier = () => CUSTOMER_TIERS.find(tier => tier.id === id);
+      return {...generateCustomer(), timeLeft: 0.5};
+    });
+    tick(1);`);
+  assert.equal(run('state.streak'), 3);
+  assert.ok(run('state.active'));
+  assert.equal(run('state.active.timeLeft'), 0.1);
+  assert.equal(run("$('streakPoints').textContent"), 3);
+  run(`state.queue = [{...generateCustomer(), timeLeft: 0.5}];
+    state.spawnT = 100; tick(1); tick(1);`);
+  assert.equal(run('state.streak'), 2);
+  run(`state.queue = Array.from({length: 4}, () => ({...generateCustomer(), timeLeft: 0.1})); tick(1);`);
+  assert.equal(run('state.streak'), 0);
+});
+
+test('a delivery earns its checkpoint package automatically and falling below then regaining it cannot farm rewards', () => {
+  const run = createGame();
+  run(`state.streak = 9; selectCustomer(state.queue[0].id); chooseBox('small');
+    state.active.needs = [{attr:'hp', target:10, prio:1}];
+    packItem('pot1'); send();`);
+  assert.equal(run('state.streak'), 10);
+  assert.equal(run('Object.values(state.inventory).reduce((a,b) => a+b, 0)'), 23);
+  assert.match(run("$('result').innerHTML"), /Checkpunkt 10:/);
+  run('changeStreak(-1); changeStreak(1); render();');
+  assert.equal(run('Object.values(state.inventory).reduce((a,b) => a+b, 0)'), 23);
+  assert.deepEqual(JSON.parse(run('JSON.stringify(state.claimedCheckpoints)')), [10]);
+  assert.match(run("$('streakNext').textContent"), /15: 10 % Händlerrabatt/);
+});
+
+test('crossing several checkpoints grants each once, queues separate discounts, and packages obey item unlocks', () => {
+  const run = createGame();
+  run('state.inventory = {}; changeStreak(27); render();');
+  assert.equal(run('state.streak'), 27);
+  assert.equal(run('Object.values(state.inventory).reduce((a,b) => a+b, 0)'), 6);
+  assert.deepEqual(JSON.parse(run('JSON.stringify(state.pendingDiscounts)')), [15, 25]);
+  assert.deepEqual(JSON.parse(run('JSON.stringify(state.claimedCheckpoints)')), [10, 15, 20, 25]);
+  assert.match(run("$('streakNext').textContent"), /Alle Checkpunkte/);
+  run('changeStreak(-27); changeStreak(25)');
+  assert.equal(run('Object.values(state.inventory).reduce((a,b) => a+b, 0)'), 6);
+  assert.equal(run('state.pendingDiscounts.length'), 2);
+  run(`state.completed = 4; selectCustomer(state.queue[0].id); chooseBox('small'); send(); $('next').onclick();`);
+  assert.equal(run('discountPercent()'), 10);
+  assert.deepEqual(JSON.parse(run('JSON.stringify(state.pendingDiscounts)')), [25]);
+  run(`finishShopping(); state.completed = 4;
+    selectCustomer(state.queue[0].id); chooseBox('small'); send(); $('next').onclick();`);
+  assert.equal(run('discountPercent()'), 15);
+  assert.equal(run('state.pendingDiscounts.length'), 0);
+
+  for (const level of [1, 2, 4]) {
+    const game = createGame();
+    game(`state.exp = expForLevel(${level}); changeStreak(19); state.inventory = {}; changeStreak(1);`);
+    assert.equal(game('Object.values(state.inventory).reduce((a,b) => a+b, 0)'), 3);
+    assert.equal(game(`Object.keys(state.inventory).every(id =>
+      ITEMS.find(item => item.id === id).level === Math.max(...ITEMS.filter(isUnlocked).map(item => item.level)))`), true);
+  }
+});
+
+test('earned discounts apply immediately to the next merchant, cover multiple checkouts, and queue for separate visits', () => {
+  const run = createGame();
+  run(`state.exp = expForLevel(2); changeStreak(14); state.completed = 4;
+    selectCustomer(state.queue[0].id); chooseBox('small');
+    state.active.needs = [{attr:'hp', target:10, prio:1}]; packItem('pot1'); send();`);
+  assert.equal(run('state.streak'), 15);
+  assert.equal(run('state.activeDiscount'), 15);
+  assert.equal(run('state.pendingDiscounts.length'), 0);
+  run("$('next').onclick(); state.gold = 32; addToCart('pot2');");
+  assert.equal(run('cartSubtotal()'), 18);
+  assert.equal(run('cartTotal()'), 17);
+  run('checkout();');
+  assert.equal(run('state.gold'), 15);
+  run("addToCart('pot2'); checkout();");
+  assert.equal(run('state.gold'), 15);
+  assert.equal(run('cartQuantity()'), 1);
+  assert.equal(run('state.activeDiscount'), 15);
+  run('state.gold = 100; checkout();');
+  assert.equal(run('state.gold'), 83);
+  assert.equal(run('state.activeDiscount'), 15);
+  assert.match(run("$('shopDiscount').textContent"), /10 % Serienrabatt/);
+  run('finishShopping(); changeStreak(10);');
+  assert.equal(run('state.activeDiscount'), null);
+  assert.deepEqual(JSON.parse(run('JSON.stringify(state.pendingDiscounts)')), [25]);
+  run(`state.completed = 4; state.queue = [generateCustomer()];
+    selectCustomer(state.queue[0].id); chooseBox('small'); send(); $('next').onclick();
+    addToCart('pot2');`);
+  assert.equal(run('state.activeDiscount'), 25);
+  assert.equal(run('cartTotal()'), 16);
+  assert.match(run("$('shopDiscount').textContent"), /15 % Serienrabatt/);
+  run('checkout(); finishShopping();');
+  assert.equal(run('discountPercent()'), 0);
+  assert.equal(run('state.pendingDiscounts.length'), 0);
+});
+
+test('checkpoint details distinguish pending and earned rewards and pause timers without spending a bonus', () => {
+  const run = createGame();
+  run(`globalThis.beforeTime = state.queue[0].timeLeft; openStreak(15); tick(20);`);
+  assert.equal(run("$('streakDialog').open"), true);
+  assert.equal(run('state.queue[0].timeLeft'), run('beforeTime'));
+  assert.match(run("$('streakRewards').innerHTML"), /selected-checkpoint/);
+  assert.match(run("$('streakRewards').innerHTML"), /10 % Rabatt während des gesamten nächsten Händlerbesuchs/);
+  assert.equal(run('state.claimedCheckpoints.length'), 0);
+  run("$('closeStreak').onclick(); changeStreak(15); render(); openStreak(15);");
+  assert.match(run("$('streakRewards').innerHTML"), /Für kommenden Händlerbesuch vorgemerkt/);
+  assert.match(run("$('streakCheckpoints').innerHTML"), /checkpoint claimed/);
+  assert.equal(run('state.pendingDiscounts.length'), 1);
+  run("$('closeStreak').onclick(); tick(1);");
+  assert.equal(run('state.queue[0].timeLeft'), run('beforeTime - 1'));
 });

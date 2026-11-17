@@ -6,13 +6,23 @@
 <meta name="theme-color" content="#1b1a2e">
 <meta http-equiv="Cache-Control" content="no-cache">
 <title>Lootbox Packer</title>
-<link rel="stylesheet" href="style.css?v=15">
+<link rel="stylesheet" href="style.css?v=16">
 </head>
 <body>
 <header>
   <span>💰 <b id="gold">0</b></span>
   <span>⭐ Level <b id="level">1</b></span>
   <button id="showRoadmap" class="secondary">Roadmap</button>
+  <section class="streak-status" aria-label="Erfolgsserie">
+    <div class="streak-heading"><span>🔥 Serie: <b id="streakPoints">0</b> Punkte</span><button id="showStreak" class="secondary" aria-haspopup="dialog" aria-controls="streakDialog">Boni</button></div>
+    <div class="streak-track">
+      <span class="streak-zero">0</span>
+      <progress id="streakProgress" value="0" max="25" aria-label="Serienpunkte bis zum letzten Checkpunkt"></progress>
+      <div id="streakCheckpoints"></div>
+    </div>
+    <span id="streakNext"></span>
+    <span id="streakDiscounts"></span>
+  </section>
 </header>
 
 <div class="level-status">
@@ -75,7 +85,11 @@
     <span>💰 <b id="shopGold">0</b></span>
   </div>
   <p id="shopHint" class="hint"></p>
-  <button id="shopRoadmap" class="secondary">Freischaltungen ansehen</button>
+  <p id="shopDiscount" class="hint"></p>
+  <div class="shop-links">
+    <button id="shopRoadmap" class="secondary">Freischaltungen</button>
+    <button id="shopStreak" class="secondary">Serien-Boni</button>
+  </div>
   <div class="merchant-content">
     <section class="shop-column">
       <h3>Waren</h3>
@@ -85,6 +99,7 @@
       <h3>Warenkorb <small id="cartCount"></small></h3>
       <div id="cart" class="shop"></div>
       <div class="checkout-summary">Summe: <b id="checkoutTotal">0 Gold</b></div>
+      <div id="checkoutDiscount" class="hint"></div>
       <div id="checkoutMessage" class="checkout-message" role="status"></div>
       <button id="checkout" class="primary">Checkout</button>
     </section>
@@ -101,9 +116,19 @@
   <div id="roadmap"></div>
 </dialog>
 
+<dialog id="streakDialog" class="merchant-dialog" aria-labelledby="streakTitle">
+  <div class="merchant-heading">
+    <h2 id="streakTitle">🔥 Serien-Boni</h2>
+    <button id="closeStreak" class="secondary">Schließen</button>
+  </div>
+  <p id="streakRules" class="hint"></p>
+  <p class="hint">Jeder Checkpunkt gibt seinen Bonus einmal pro Spieldurchlauf – auch wenn deine Punkte später sinken. Pakete landen automatisch im Inventar. Rabatte gelten je einen ganzen Händlerbesuch, auch bei mehreren Checkouts, und enden mit „Einkauf beenden“. Mehrere Rabatte gelten für aufeinanderfolgende Besuche. Während dieser Übersicht pausieren die Kundentimer.</p>
+  <div id="streakRewards"></div>
+</dialog>
+
 <button id="send" class="primary fab">📦 Absenden</button>
 
 <div id="result" class="overlay hidden"></div>
-<script src="game.js?v=15"></script>
+<script src="game.js?v=16"></script>
 </body>
 </html>
