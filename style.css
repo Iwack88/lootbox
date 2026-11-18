@@ -59,6 +59,9 @@ small { opacity: .7; font-weight: 400; }
 .icon-slot { position: relative; min-width: 0; min-height: 52px; border: 1px solid var(--item-color, #6c63ff); border-radius: 9px; color: #eee; background: #34325c; font: inherit; font-size: 26px; cursor: pointer; touch-action: manipulation; }
 .icon-slot.selected { outline: 2px solid #ffd166; outline-offset: 1px; }
 .icon-slot:focus-visible { outline: 2px solid #ffd166; outline-offset: 2px; }
+.item-art { display: block; width: 32px; height: 32px; }
+.icon-slot .item-art { margin-inline: auto; }
+.item-detail-name { display: flex; align-items: center; gap: 6px; }
 .empty-slot { border-style: dashed; color: #b7b3cd; background: #1b1a2e; }
 .item-count { position: absolute; right: 3px; bottom: 2px; padding: 1px 4px; background: #15142a; border-radius: 5px; font-size: 12px; }
 .item-dialog { max-width: 560px; }
@@ -167,6 +170,13 @@ button[hidden] { display: none; }
 #packingView .bar { height: 7px; }
 #packingView #customer > .reward-offer { display: none; }
 #boxCard h3 { margin: 0 0 4px; font-size: 15px; }
+#boxCard { background: radial-gradient(ellipse at 50% 25%, #704731, #382823 75%); border: 1px solid #8e6448; }
+#boxCard .chest-art { display: block; width: auto; height: clamp(56px, 12dvh, 105px); margin: 0 auto 4px; }
+#boxCard .empty-slot { border-color: #dbb58a; background: #291d1b; color: #ffe2b6; }
+@media (max-height: 680px) {
+  #boxCard:has(.icon-slot:nth-child(5)) .box-header { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  #boxCard:has(.icon-slot:nth-child(5)) .chest-art { height: 48px; margin: 0 0 4px; }
+}
 #boxCard .box-effects { margin-bottom: 5px; font-size: 12px; }
 #packingView .preview { margin: 6px 0 0; font-size: 13px; }
 #packingView .order-actions { padding: 8px 0 max(8px, env(safe-area-inset-bottom)); }

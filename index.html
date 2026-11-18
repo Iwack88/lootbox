@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1b1a2e">
 <meta http-equiv="Cache-Control" content="no-cache">
 <title>Lootbox Packer</title>
-<link rel="stylesheet" href="style.css?v=31">
+<link rel="stylesheet" href="style.css?v=32">
 </head>
 <body>
 <header>
@@ -99,8 +99,13 @@
 </section>
 
 <section class="card" id="boxCard">
-  <h3>Box <small id="pickInfo"></small> <small id="slotInfo"></small></h3>
-  <div id="boxEffects" class="box-effects"></div>
+  <div class="box-header">
+    <div>
+      <h3>Box <small id="pickInfo"></small> <small id="slotInfo"></small></h3>
+      <div id="boxEffects" class="box-effects"></div>
+    </div>
+    <img class="chest-art" src="assets/art/open-chest.svg" width="240" height="158" alt="">
+  </div>
   <div id="box" class="box"></div>
   <div id="preview" class="preview"></div>
 </section>
@@ -258,6 +263,6 @@
 
 <div id="result" class="overlay hidden"></div>
 <script src="sound.js?v=29"></script>
-<script src="game.js?v=33"></script>
+<script src="game.js?v=34"></script>
 </body>
 </html>

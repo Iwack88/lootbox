@@ -48,6 +48,18 @@ function statsText(stats) {
   ).join(' · ');
 }
 
+const ITEM_ART = {
+  pot1: 'healing-potion.svg',
+  dag: 'short-sword.svg',
+  shield: 'wooden-shield.svg',
+};
+
+function itemIconHtml(item) {
+  const asset = ITEM_ART[item.id];
+  return asset ? `<img class="item-art" src="assets/art/${asset}" width="32" height="32" alt="">`
+    : `<span aria-hidden="true">${item.icon}</span>`;
+}
+
 function itemNameHtml(item) {
   return `<span class="item-name item-rarity-${item.rarity}">${item.name}</span>`;
 }
@@ -1273,7 +1285,7 @@ function render() {
     const index = state.boxPositions.indexOf(position);
     const item = state.box[index];
     return item
-      ? `<button class="box-item icon-slot item-rarity-${item.rarity}" data-slot="${position}" aria-label="Slot ${position + 1}: ${item.name}, Details anzeigen" title="${item.name}"><span aria-hidden="true">${item.icon}</span></button>`
+      ? `<button class="box-item icon-slot item-rarity-${item.rarity}" data-slot="${position}" aria-label="Slot ${position + 1}: ${item.name}, Details anzeigen" title="${item.name}">${itemIconHtml(item)}</button>`
       : `<button class="icon-slot empty-slot" data-slot="${position}" aria-label="Slot ${position + 1}: leer, Item auswählen"><span aria-hidden="true">＋</span></button>`;
   }).join('');
   $('box').querySelectorAll('[data-slot]').forEach(el => el.onclick = () => openBoxSlot(+el.dataset.slot));
@@ -1353,11 +1365,11 @@ let selectedSupplyItem = null;
 
 function itemIconButton(item, quantity, attribute, selected = false) {
   return `<button class="icon-slot item-rarity-${item.rarity}${selected ? ' selected' : ''}" ${attribute}="${item.id}" aria-label="${item.name}, Vorrat: ${quantity}" aria-pressed="${selected}" title="${item.name}">
-    <span aria-hidden="true">${item.icon}</span><b class="item-count">${quantity}</b></button>`;
+    ${itemIconHtml(item)}<b class="item-count">${quantity}</b></button>`;
 }
 
 function itemInfoHtml(item) {
-  return `<div class="item-rarity-${item.rarity}"><strong>${item.icon} ${itemNameHtml(item)}</strong><p>${itemDetailsHtml(item)}</p><p>Vorrat: ${state.inventory[item.id] || 0}</p></div>`;
+  return `<div class="item-rarity-${item.rarity}"><strong class="item-detail-name">${itemIconHtml(item)} ${itemNameHtml(item)}</strong><p>${itemDetailsHtml(item)}</p><p>Vorrat: ${state.inventory[item.id] || 0}</p></div>`;
 }
 
 function openBoxSlot(position) {

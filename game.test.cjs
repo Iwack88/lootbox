@@ -252,6 +252,10 @@ test('individual slots select icons for details, retain their positions after re
   assert.match(run("$('packingNeedValues').innerHTML"), /Leben.*wichtig.*0\/20/);
   assert.match(run("$('inventory').innerHTML"), /data-pack-item="pot1"/);
   assert.match(run("$('inventory').innerHTML"), /Kleiner Heiltrank, Vorrat: 5/);
+  assert.match(run("$('inventory').innerHTML"), /assets\/art\/healing-potion\.svg/);
+  assert.match(run("$('inventory').innerHTML"), /assets\/art\/short-sword\.svg/);
+  assert.match(run("$('inventory').innerHTML"), /assets\/art\/wooden-shield\.svg/);
+  assert.match(run("$('inventory').innerHTML"), /aria-hidden="true">🪄/);
   run("selectedPackingItem = 'pot1'; renderInventory()");
   assert.match(run("$('packingItemDetails').innerHTML"), /Leben: \+10/);
   assert.match(run("$('packingItemDetails').innerHTML"), /Einpacken/);
@@ -260,6 +264,7 @@ test('individual slots select icons for details, retain their positions after re
   assert.equal(run('state.inventory.pot1'), 4);
   assert.deepEqual(JSON.parse(run('JSON.stringify(state.boxPositions)')), [2]);
   assert.match(run("$('box').innerHTML"), /Slot 3: Kleiner Heiltrank/);
+  assert.match(run("$('box').innerHTML"), /assets\/art\/healing-potion\.svg/);
   assert.match(run("$('customer').innerHTML"), /10\/20/);
   assert.match(run("$('preview').innerHTML"), /Aktuell: 50%/);
   run('openBoxSlot(1)');
