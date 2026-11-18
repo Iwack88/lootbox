@@ -386,7 +386,7 @@ let savingBlocked = false;
 let storageError = '';
 
 function showSaveStatus(message, error = false) {
-  for (const id of ['saveStatus', 'saveAlert', 'orderSaveStatus', 'packingSaveStatus', 'packedItemSaveStatus', 'shopSaveStatus', 'workshopSaveStatus', 'supplySaveStatus', 'sponsorSaveStatus']) {
+  for (const id of ['saveStatus', 'saveAlert', 'orderSaveStatus', 'packingSaveStatus', 'shopSaveStatus', 'workshopSaveStatus', 'supplySaveStatus', 'sponsorSaveStatus']) {
     if ($(id).textContent !== message) $(id).textContent = message;
     $(id).classList.toggle('error', error);
     $(id).hidden = id !== 'saveStatus' && !error;
@@ -733,12 +733,12 @@ function packingCustomer() {
   return { ...hero, needs: Object.entries(route.needs).map(([attr, target]) => ({ attr, target, prio: 2 })) };
 }
 
-function totals(previewItem = null) {
+function totals() {
   const t = {};
   if (state.boxType) {
     for (const [attr, value] of Object.entries(state.boxType.modifiers)) t[attr] = value;
   }
-  for (const it of previewItem ? [...state.box, previewItem] : state.box) {
+  for (const it of state.box) {
     for (const [attr, value] of Object.entries(it.stats)) t[attr] = (t[attr] || 0) + value;
   }
   return t;
@@ -1166,14 +1166,12 @@ function renderSponsorship() {
   if (stage && !sponsor.trip && sponsor.recoverAt === null) $('startSponsorPacking').onclick = startSponsorPacking;
 }
 
-function needsHtml(c, t, preview = t) {
+function needsHtml(c, t) {
   return c.needs.map(n => {
     const have = Math.max(0, t[n.attr] || 0);
-    const projected = Math.max(0, preview[n.attr] || 0);
-    const pct = Math.min(100, projected / n.target * 100);
-    const values = projected === have ? `${have}/${n.target}` : `${have}/${n.target} → <strong>${projected}/${n.target}</strong>`;
+    const pct = Math.min(100, have / n.target * 100);
     return `<div class="need">
-      <div class="need-head"><span>${ATTRS[n.attr].icon} ${ATTRS[n.attr].name} <span class="prio p${n.prio}">${PRIO_LABEL[n.prio]}</span></span><span>${values}</span></div>
+      <div class="need-head"><span>${ATTRS[n.attr].icon} ${ATTRS[n.attr].name} <span class="prio p${n.prio}">${PRIO_LABEL[n.prio]}</span></span><span>${have}/${n.target}</span></div>
       <div class="bar"><div style="width:${pct}%"></div></div>
     </div>`;
   }).join('');
@@ -1289,7 +1287,7 @@ function render() {
     const index = state.boxPositions.indexOf(position);
     const item = state.box[index];
     return item
-      ? `<button class="box-item icon-slot item-rarity-${item.rarity}" data-slot="${position}" aria-label="Slot ${position + 1}: ${item.name}, Details anzeigen" title="${item.name}">${itemIconHtml(item)}</button>`
+      ? `<button class="box-item icon-slot item-rarity-${item.rarity}" data-slot="${position}" aria-label="Slot ${position + 1}: ${item.name} entfernen" title="${item.name} entfernen">${itemIconHtml(item)}</button>`
       : `<button class="icon-slot empty-slot${position === selectedSlot ? ' selected-slot' : ''}" data-slot="${position}" aria-label="Slot ${position + 1}: leer, Item auswählen"><span aria-hidden="true">＋</span></button>`;
   }).join('');
   $('box').querySelectorAll('[data-slot]').forEach(el => el.onclick = () => openBoxSlot(+el.dataset.slot));
@@ -1364,11 +1362,13 @@ function render() {
 }
 
 let selectedSlot = null;
-let selectedPackingItem = null;
+let packingDetailItem = null;
 let selectedSupplyItem = null;
 
-function itemIconButton(item, quantity, attribute, selected = false) {
-  return `<button class="icon-slot item-rarity-${item.rarity}${selected ? ' selected' : ''}" ${attribute}="${item.id}" aria-label="${item.name}, Vorrat: ${quantity}" aria-pressed="${selected}" title="${item.name}">
+function itemIconButton(item, quantity, attribute, selected) {
+  const action = selected === undefined ? ', einpacken' : '';
+  const pressed = selected === undefined ? '' : ` aria-pressed="${selected}"`;
+  return `<button class="icon-slot item-rarity-${item.rarity}${selected ? ' selected' : ''}" ${attribute}="${item.id}" aria-label="${item.name}, Vorrat: ${quantity}${action}"${pressed} title="${item.name}">
     ${itemIconHtml(item)}<b class="item-count">${quantity}</b></button>`;
 }
 
@@ -1379,12 +1379,12 @@ function itemInfoHtml(item) {
 function openBoxSlot(position) {
   if (!state.boxType || !Number.isInteger(position) || position < 0 || position >= capacity()) return;
   selectedSlot = position;
+  packingDetailItem = null;
   const index = state.boxPositions.indexOf(position);
   if (index >= 0) {
-    $('packedItemDetails').innerHTML = itemInfoHtml(state.box[index]);
-    $('packedItemDialog').showModal();
+    removeFromBox(index);
+    $('box').querySelector(`[data-slot="${position}"]`)?.focus({ preventScroll: true });
   } else {
-    selectedPackingItem = null;
     renderInventory();
   }
 }
@@ -1398,11 +1398,8 @@ function renderInventory() {
   }
   $('box').querySelectorAll('.empty-slot').forEach(slot =>
     slot.classList.toggle('selected-slot', Number(slot.dataset.slot) === selectedSlot));
-  const item = owned.find(it => it.id === selectedPackingItem);
-  const previewItem = item && isUnlocked(item) && selectedSlot !== null
-    && selectedSlot < capacity() && !state.boxPositions.includes(selectedSlot) ? item : null;
   $('packingNeeds').hidden = !customer || !state.boxType;
-  $('packingNeedsTitle').textContent = previewItem ? 'Kundenwünsche · Vorschau' : 'Kundenwünsche';
+  if (!state.boxType) packingDetailItem = null;
   const sponsor = state.sponsorship;
   const requirement = $('packingSponsorRequirement');
   requirement.hidden = !sponsor?.packing;
@@ -1410,35 +1407,33 @@ function renderInventory() {
     const route = SPONSOR_STAGES[sponsor.stage].routes[sponsor.route];
     const required = ITEMS.find(item => item.id === route.item);
     const packed = state.box.some(item => item.id === route.item);
-    requirement.textContent = `Pflicht: ${required.icon} ${required.name} · ${packed ? 'eingepackt' : previewItem === required ? 'ausgewählt' : 'noch nicht eingepackt'}`;
+    requirement.textContent = `Pflicht: ${required.icon} ${required.name} · ${packed ? 'eingepackt' : 'noch nicht eingepackt'}`;
   }
   if ($('packingNeeds').hidden) {
     $('packingNeedValues').innerHTML = '';
   } else {
-    const current = totals();
-    $('packingNeedValues').innerHTML = needsHtml(customer, current, previewItem ? totals(previewItem) : current);
+    $('packingNeedValues').innerHTML = needsHtml(customer, totals());
   }
   $('inventory').innerHTML = owned.length
-    ? owned.map(it => itemIconButton(it, state.inventory[it.id], 'data-pack-item', selectedPackingItem === it.id)).join('')
+    ? owned.map(it => itemIconButton(it, state.inventory[it.id], 'data-pack-item')).join('')
     : `<div class="empty">${state.shopping ? 'Dein Lager ist leer. Kaufe Vorräte im Shop.' : 'Dein Lager ist leer. Bestelle Nachschub im Inventar-Menü oder nutze den Notfall-Restock.'}</div>`;
   $('inventory').querySelectorAll('[data-pack-item]').forEach(el => el.onclick = () => {
-    selectedPackingItem = el.dataset.packItem;
-    if (selectedSlot === null || state.boxPositions.includes(selectedSlot)) {
-      selectedSlot = Array.from({ length: capacity() }, (_, i) => i).find(i => !state.boxPositions.includes(i)) ?? null;
-    }
-    renderInventory();
-    $('inventory').querySelector(`[data-pack-item="${selectedPackingItem}"]`)?.focus();
+    const item = owned.find(it => it.id === el.dataset.packItem);
+    packingDetailItem = item;
+    const position = packItem(item.id, selectedSlot);
+    if (position === undefined) renderInventory();
+    const focusTarget = $('inventory').querySelector(`[data-pack-item="${item.id}"]`)
+      || $('box').querySelector(`[data-slot="${position}"]`);
+    focusTarget?.focus({ preventScroll: true });
   });
   $('inventoryInfo').textContent = `${owned.reduce((sum, entry) => sum + state.inventory[entry.id], 0)} Items`;
-  $('packingItemDetails').innerHTML = item ? `<div>${itemInfoHtml(item)}</div>
-    ${isUnlocked(item) ? `<button id="confirmPackItem" class="primary" ${selectedSlot === null ? 'disabled' : ''}>${selectedSlot === null ? 'Box voll' : `In Slot ${selectedSlot + 1} einpacken`}</button>` : `<p>Ab Level ${item.level} verwendbar.</p>`}`
-    : '<p class="hint">Tippe auf ein Item, um seine Werte zu sehen.</p>';
-  if (item && isUnlocked(item)) $('confirmPackItem').onclick = () => {
-    const position = packItem(item.id, selectedSlot);
-    if (position !== undefined) {
-      $('box').querySelector(`[data-slot="${position}"]`)?.focus();
-    }
-  };
+  const hint = packingDetailItem && !isUnlocked(packingDetailItem)
+    ? `Ab Level ${packingDetailItem.level} verwendbar.`
+    : selectedSlot === null
+      ? 'Kiste voll. Tippe auf einen belegten Slot, um ein Item zu entfernen.'
+      : packingDetailItem ? '' : 'Tippe auf ein Item, um es einzupacken.';
+  $('packingItemDetails').innerHTML = (packingDetailItem ? itemInfoHtml(packingDetailItem) : '')
+    + (hint ? `<p class="hint">${hint}</p>` : '');
 }
 
 function renderPicker() {
@@ -1639,17 +1634,6 @@ $('recruitCustomer').onclick = recruitCustomer;
 $('openSupply').onclick = openSupply;
 $('packingSupply').onclick = openSupply;
 $('closeSupply').onclick = () => $('supplyDialog').close();
-$('closePackedItem').onclick = () => $('packedItemDialog').close();
-for (const id of ['packedItemDialog']) {
-  $(id).addEventListener('close', () => $('box').querySelector(`[data-slot="${selectedSlot}"]`)?.focus());
-}
-$('removePackedItem').onclick = () => {
-  const index = state.boxPositions.indexOf(selectedSlot);
-  if (index < 0) return;
-  removeFromBox(index);
-  $('packedItemDialog').close();
-  $('box').querySelector(`[data-slot="${selectedSlot}"]`)?.focus();
-};
 $('hideUnavailable').checked = true;
 $('hideUnavailable').onchange = renderSupply;
 $('openWorkshop').onclick = openWorkshop;
