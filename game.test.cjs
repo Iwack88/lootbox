@@ -240,6 +240,18 @@ test('customers can be recruited for 10 gold only when a queue place and enough 
   assert.equal(reloaded('state.queue.length'), 4);
 });
 
+test('need bars identify their attribute while preserving progress values', () => {
+  const run = createMilestoneGame();
+  const html = run(`needsHtml({needs: [
+    {attr:'hp', target:20, prio:2},
+    {attr:'magic', target:10, prio:1},
+    {attr:'armor', target:8, prio:3}
+  ]}, {hp:10, magic:0, armor:12})`);
+  assert.match(html, /Leben.*wichtig.*10\/20[\s\S]*?need-bar-hp"><div style="width:50%"/);
+  assert.match(html, /Magie.*gering.*0\/10[\s\S]*?need-bar-magic"><div style="width:0%"/);
+  assert.match(html, /Rüstung.*sehr wichtig.*12\/8[\s\S]*?need-bar-armor"><div style="width:100%"/);
+});
+
 test('individual slots retain their positions after reload and return items on tap', () => {
   const storage = new Map();
   const run = createMilestoneGame({ storage });
@@ -247,6 +259,7 @@ test('individual slots retain their positions after reload and return items on t
     state.active.needs = [{attr:'hp', target:20, prio:2}]; render();`);
   assert.equal((run("$('box').innerHTML").match(/data-slot=/g) || []).length, 3);
   run('openBoxSlot(2)');
+  assert.equal(run("$('packingInventoryPanel').open"), true);
   assert.equal(run('selectedSlot'), 2);
   assert.equal(run("$('packingNeeds').hidden"), false);
   assert.match(run("$('packingNeedValues').innerHTML"), /Leben.*wichtig.*0\/20/);
@@ -259,6 +272,7 @@ test('individual slots retain their positions after reload and return items on t
   run(`globalThis.potionIcon = { dataset: { packItem: 'pot1' } };
     $('inventory').querySelectorAll = () => [potionIcon];
     renderInventory(); potionIcon.onclick();`);
+  assert.equal(run("$('packingInventoryPanel').open"), false);
   assert.match(run("$('packingItemDetails').innerHTML"), /Leben: \+10/);
   assert.equal(run('state.inventory.pot1'), 4);
   assert.deepEqual(JSON.parse(run('JSON.stringify(state.boxPositions)')), [2]);
@@ -273,6 +287,7 @@ test('individual slots retain their positions after reload and return items on t
   const restored = createMilestoneGame({ storage });
   assert.deepEqual(JSON.parse(restored('JSON.stringify(state.boxPositions)')), [2,0]);
   restored('openBoxSlot(2)');
+  assert.equal(restored("!!$('packingInventoryPanel').open"), false);
   assert.equal(restored('state.inventory.pot1'), 5);
   assert.equal(restored('selectedSlot'), 2);
   assert.deepEqual(JSON.parse(restored('JSON.stringify(state.boxPositions)')), [0]);

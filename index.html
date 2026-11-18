@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1b1a2e">
 <meta http-equiv="Cache-Control" content="no-cache">
 <title>Lootbox Packer</title>
-<link rel="stylesheet" href="style.css?v=35">
+<link rel="stylesheet" href="style.css?v=38">
 </head>
 <body>
 <header>
@@ -104,23 +104,27 @@
 </section>
 
 <section class="card" id="boxCard">
-  <div class="box-header">
-    <div>
+  <div class="box-stage">
+    <div class="box-header">
       <h3 id="pickInfo"></h3>
       <div id="slotInfo" class="box-slot-count"></div>
       <div id="boxEffects" class="box-effects"></div>
     </div>
-    <img class="chest-art" src="assets/art/open-chest.svg" width="240" height="158" alt="">
+    <div id="box" class="box"></div>
   </div>
-  <div id="box" class="box"></div>
   <div id="preview" class="preview"></div>
 </section>
   </div>
-<section id="packingInventoryPanel" class="packing-inventory-panel" aria-labelledby="packingInventoryTitle">
+  <div class="order-actions"><button id="send" class="primary">📦 Absenden</button></div>
+</section>
+</dialog>
+
+<dialog id="packingInventoryPanel" class="packing-inventory-panel" aria-labelledby="packingInventoryTitle">
   <div>
     <div class="packing-inventory-heading">
       <h3 id="packingInventoryTitle">Items &amp; Vorrat <small id="inventoryInfo"></small></h3>
       <div class="packing-inventory-tools">
+        <button id="closePackingInventory" class="secondary">Schließen</button>
         <button id="packingSupply" class="secondary">Bestellen</button>
         <button id="restock" class="secondary">Notfall-Restock <small id="restockCost"></small></button>
       </div>
@@ -128,14 +132,12 @@
     <p id="packingSaveStatus" class="hint" role="status" hidden></p>
     <p id="restockHint" class="hint" hidden></p>
   </div>
+  <div id="inventoryNeeds" aria-live="polite"></div>
   <div id="inventory" class="icon-grid packing-inventory-list"></div>
   <div class="packing-inventory-footer">
     <div id="packingItemDetails" class="item-details" aria-live="polite"></div>
     <div id="restockResult" role="status"></div>
   </div>
-</section>
-  <div class="order-actions"><button id="send" class="primary">📦 Absenden</button></div>
-</section>
 </dialog>
 
 <!-- Händler vorerst deaktiviert; Oberfläche für eine spätere Rückkehr erhalten. -->
@@ -255,6 +257,6 @@
 
 <div id="result" class="overlay hidden"></div>
 <script src="sound.js?v=29"></script>
-<script src="game.js?v=37"></script>
+<script src="game.js?v=39"></script>
 </body>
 </html>

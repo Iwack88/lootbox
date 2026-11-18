@@ -1172,7 +1172,7 @@ function needsHtml(c, t) {
     const pct = Math.min(100, have / n.target * 100);
     return `<div class="need">
       <div class="need-head"><span>${ATTRS[n.attr].icon} ${ATTRS[n.attr].name} <span class="prio p${n.prio}">${PRIO_LABEL[n.prio]}</span></span><span>${have}/${n.target}</span></div>
-      <div class="bar"><div style="width:${pct}%"></div></div>
+      <div class="bar need-bar-${n.attr}"><div style="width:${pct}%"></div></div>
     </div>`;
   }).join('');
 }
@@ -1274,9 +1274,9 @@ function render() {
 
   $('customer').innerHTML = c
     ? `<div class="packing-customer-heading">
-        <span class="packing-customer-emblem" aria-hidden="true">${c.icon}</span>
         <div class="cust-name">${c.name}<small>${sponsorRoute ? sponsorRoute.name : `${c.cls} · ${c.tierLabel} · ${RARITY[c.rarity].label}`}</small></div>
-      </div>`
+      </div>
+      <span class="packing-customer-emblem" aria-hidden="true">${c.icon}</span>`
     : '<div class="empty">Wähle einen Kunden aus der Liste</div>';
   $('selectionCustomer').innerHTML = c && !sponsorRoute
     ? `<div class="cust-name r-${c.rarity} tier-${c.tier}">${c.icon} ${c.name} <small>${c.cls} · ${c.tierLabel} · ${RARITY[c.rarity].label}</small></div>` + needsHtml(c, {}) + itemRewardHtml(c)
@@ -1386,6 +1386,7 @@ function openBoxSlot(position) {
     $('box').querySelector(`[data-slot="${position}"]`)?.focus({ preventScroll: true });
   } else {
     renderInventory();
+    if (!$('packingInventoryPanel').open) $('packingInventoryPanel').showModal();
   }
 }
 
@@ -1399,6 +1400,7 @@ function renderInventory() {
   $('box').querySelectorAll('.empty-slot').forEach(slot =>
     slot.classList.toggle('selected-slot', Number(slot.dataset.slot) === selectedSlot));
   $('packingNeeds').hidden = !customer || !state.boxType;
+  if ((!customer || !state.boxType) && $('packingInventoryPanel').open) $('packingInventoryPanel').close();
   if (!state.boxType) packingDetailItem = null;
   const sponsor = state.sponsorship;
   const requirement = $('packingSponsorRequirement');
@@ -1414,16 +1416,21 @@ function renderInventory() {
   } else {
     $('packingNeedValues').innerHTML = needsHtml(customer, totals());
   }
+  $('inventoryNeeds').innerHTML = $('packingNeedValues').innerHTML;
   $('inventory').innerHTML = owned.length
     ? owned.map(it => itemIconButton(it, state.inventory[it.id], 'data-pack-item')).join('')
     : `<div class="empty">${state.shopping ? 'Dein Lager ist leer. Kaufe Vorräte im Shop.' : 'Dein Lager ist leer. Bestelle Nachschub im Inventar-Menü oder nutze den Notfall-Restock.'}</div>`;
   $('inventory').querySelectorAll('[data-pack-item]').forEach(el => el.onclick = () => {
     const item = owned.find(it => it.id === el.dataset.packItem);
     packingDetailItem = item;
+    const targetSlot = selectedSlot;
     const position = packItem(item.id, selectedSlot);
     if (position === undefined) renderInventory();
-    const focusTarget = $('inventory').querySelector(`[data-pack-item="${item.id}"]`)
-      || $('box').querySelector(`[data-slot="${position}"]`);
+    else {
+      $('packingInventoryPanel').close();
+      $('box').querySelector(`[data-slot="${targetSlot}"]`)?.focus({ preventScroll: true });
+    }
+    const focusTarget = position === undefined ? $('inventory').querySelector(`[data-pack-item="${item.id}"]`) : null;
     focusTarget?.focus({ preventScroll: true });
   });
   $('inventoryInfo').textContent = `${owned.reduce((sum, entry) => sum + state.inventory[entry.id], 0)} Items`;
@@ -1633,6 +1640,9 @@ $('closeSponsor').onclick = () => $('sponsorDialog').close();
 $('recruitCustomer').onclick = recruitCustomer;
 $('openSupply').onclick = openSupply;
 $('packingSupply').onclick = openSupply;
+$('closePackingInventory').onclick = () => $('packingInventoryPanel').close();
+$('packingInventoryPanel').addEventListener('close', () =>
+  $('box').querySelector(`[data-slot="${selectedSlot}"]`)?.focus({ preventScroll: true }));
 $('closeSupply').onclick = () => $('supplyDialog').close();
 $('hideUnavailable').checked = true;
 $('hideUnavailable').onchange = renderSupply;
