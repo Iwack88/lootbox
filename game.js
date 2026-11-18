@@ -866,9 +866,11 @@ function packItem(id, position = null) {
   state.inventory[id]--;
   state.box.push(it);
   state.boxPositions.push(position);
+  const packedPosition = position;
+  selectedSlot = Array.from({ length: capacity() }, (_, i) => i).find(i => !state.boxPositions.includes(i)) ?? null;
   sfx.play('pack');
   render();
-  return true;
+  return packedPosition;
 }
 
 function removeFromBox(index) {
@@ -901,6 +903,7 @@ function chooseBox(id) {
   if (state.boxType === type) return;
   returnBoxToInventory();
   state.boxType = type;
+  selectedSlot = Array.from({ length: capacity() }, (_, i) => i).find(i => !state.boxPositions.includes(i)) ?? null;
   sfx.play('box');
   render();
   $('orderDialog').scrollTop = 0;
@@ -1268,13 +1271,14 @@ function render() {
     ? `${state.shopOffers.length} Angebote: 4 feste Basis-Items und ${Math.max(0, state.shopOffers.length - SHOP_BASE_IDS.length)} zufällige Extras. Nächster Angebotsplatz: Level ${(Math.floor(progress.level / SHOP_SLOT_INTERVAL) + 1) * SHOP_SLOT_INTERVAL}. Auswahl bleibt für diesen Besuch gleich. Händlerpreise: +25 %, auf ganze Gold aufgerundet; Serienrabatt gilt danach. Jeder Kauf landet im Inventar.`
     : 'Der Händler ist vorerst deaktiviert. Nutze Bestellungen im Inventar, die Werkstatt oder den Notfall-Restock.';
   $('restock').disabled = state.shopping || state.showingResult || (state.debt > 0 && state.gold < RESTOCK_COST);
-  $('restock').textContent = `Notfall-Restock · ${RESTOCK_COST} Gold`;
+  $('restockCost').textContent = `${RESTOCK_COST} Gold`;
   $('restockHint').textContent = `${RESTOCK_SIZE} zufällige Basis-Items: kleiner Heiltrank, Kurzschwert, Holzschild oder Zauberstab. Mindestens zwei Attribute. Fehlendes Gold wird als Vorschuss mit künftigen Goldbelohnungen verrechnet. ${state.debt ? 'Kein weiterer Vorschuss, bis die offene Gebühr bezahlt ist.' : ''}`;
 
-  $('customer').innerHTML = sponsorRoute
-    ? `<div class="cust-name">${c.icon} ${c.name} <small>· ${sponsorRoute.name}</small></div>${needsHtml(c, totals())}`
-    : c
-    ? `<div class="cust-name r-${c.rarity} tier-${c.tier}">${c.icon} ${c.name} <small>${c.cls} · ${c.tierLabel} · ${RARITY[c.rarity].label}</small></div>` + needsHtml(c, totals()) + itemRewardHtml(c, rewardFor(quality(), c).earned)
+  $('customer').innerHTML = c
+    ? `<div class="packing-customer-heading">
+        <span class="packing-customer-emblem" aria-hidden="true">${c.icon}</span>
+        <div class="cust-name">${c.name}<small>${sponsorRoute ? sponsorRoute.name : `${c.cls} · ${c.tierLabel} · ${RARITY[c.rarity].label}`}</small></div>
+      </div>`
     : '<div class="empty">Wähle einen Kunden aus der Liste</div>';
   $('selectionCustomer').innerHTML = c && !sponsorRoute
     ? `<div class="cust-name r-${c.rarity} tier-${c.tier}">${c.icon} ${c.name} <small>${c.cls} · ${c.tierLabel} · ${RARITY[c.rarity].label}</small></div>` + needsHtml(c, {}) + itemRewardHtml(c)
@@ -1286,7 +1290,7 @@ function render() {
     const item = state.box[index];
     return item
       ? `<button class="box-item icon-slot item-rarity-${item.rarity}" data-slot="${position}" aria-label="Slot ${position + 1}: ${item.name}, Details anzeigen" title="${item.name}">${itemIconHtml(item)}</button>`
-      : `<button class="icon-slot empty-slot" data-slot="${position}" aria-label="Slot ${position + 1}: leer, Item auswählen"><span aria-hidden="true">＋</span></button>`;
+      : `<button class="icon-slot empty-slot${position === selectedSlot ? ' selected-slot' : ''}" data-slot="${position}" aria-label="Slot ${position + 1}: leer, Item auswählen"><span aria-hidden="true">＋</span></button>`;
   }).join('');
   $('box').querySelectorAll('[data-slot]').forEach(el => el.onclick = () => openBoxSlot(+el.dataset.slot));
   $('slotInfo').textContent = state.boxType ? `${used}/${capacity()} Items` : '';
@@ -1382,13 +1386,18 @@ function openBoxSlot(position) {
   } else {
     selectedPackingItem = null;
     renderInventory();
-    $('packingInventoryDialog').showModal();
   }
 }
 
 function renderInventory() {
   const customer = packingCustomer();
   const owned = ITEMS.filter(it => state.inventory[it.id] > 0);
+  const occupied = state.boxPositions.includes(selectedSlot);
+  if (selectedSlot === null || occupied || selectedSlot >= capacity()) {
+    selectedSlot = Array.from({ length: capacity() }, (_, i) => i).find(i => !state.boxPositions.includes(i)) ?? null;
+  }
+  $('box').querySelectorAll('.empty-slot').forEach(slot =>
+    slot.classList.toggle('selected-slot', Number(slot.dataset.slot) === selectedSlot));
   const item = owned.find(it => it.id === selectedPackingItem);
   const previewItem = item && isUnlocked(item) && selectedSlot !== null
     && selectedSlot < capacity() && !state.boxPositions.includes(selectedSlot) ? item : null;
@@ -1414,16 +1423,20 @@ function renderInventory() {
     : `<div class="empty">${state.shopping ? 'Dein Lager ist leer. Kaufe Vorräte im Shop.' : 'Dein Lager ist leer. Bestelle Nachschub im Inventar-Menü oder nutze den Notfall-Restock.'}</div>`;
   $('inventory').querySelectorAll('[data-pack-item]').forEach(el => el.onclick = () => {
     selectedPackingItem = el.dataset.packItem;
+    if (selectedSlot === null || state.boxPositions.includes(selectedSlot)) {
+      selectedSlot = Array.from({ length: capacity() }, (_, i) => i).find(i => !state.boxPositions.includes(i)) ?? null;
+    }
     renderInventory();
     $('inventory').querySelector(`[data-pack-item="${selectedPackingItem}"]`)?.focus();
   });
-  $('packingItemDetails').innerHTML = item ? `${itemInfoHtml(item)}
-    ${isUnlocked(item) ? '<button id="confirmPackItem" class="primary">Einpacken</button>' : `<p>Ab Level ${item.level} verwendbar.</p>`}`
+  $('inventoryInfo').textContent = `${owned.reduce((sum, entry) => sum + state.inventory[entry.id], 0)} Items`;
+  $('packingItemDetails').innerHTML = item ? `<div>${itemInfoHtml(item)}</div>
+    ${isUnlocked(item) ? `<button id="confirmPackItem" class="primary" ${selectedSlot === null ? 'disabled' : ''}>${selectedSlot === null ? 'Box voll' : `In Slot ${selectedSlot + 1} einpacken`}</button>` : `<p>Ab Level ${item.level} verwendbar.</p>`}`
     : '<p class="hint">Tippe auf ein Item, um seine Werte zu sehen.</p>';
   if (item && isUnlocked(item)) $('confirmPackItem').onclick = () => {
-    if (packItem(item.id, selectedSlot)) {
-      $('packingInventoryDialog').close();
-      $('box').querySelector(`[data-slot="${selectedSlot}"]`)?.focus();
+    const position = packItem(item.id, selectedSlot);
+    if (position !== undefined) {
+      $('box').querySelector(`[data-slot="${position}"]`)?.focus();
     }
   };
 }
@@ -1626,12 +1639,8 @@ $('recruitCustomer').onclick = recruitCustomer;
 $('openSupply').onclick = openSupply;
 $('packingSupply').onclick = openSupply;
 $('closeSupply').onclick = () => $('supplyDialog').close();
-$('supplyDialog').addEventListener('close', () => {
-  if ($('packingInventoryDialog').open) renderInventory();
-});
-$('closePackingInventory').onclick = () => $('packingInventoryDialog').close();
 $('closePackedItem').onclick = () => $('packedItemDialog').close();
-for (const id of ['packingInventoryDialog', 'packedItemDialog']) {
+for (const id of ['packedItemDialog']) {
   $(id).addEventListener('close', () => $('box').querySelector(`[data-slot="${selectedSlot}"]`)?.focus());
 }
 $('removePackedItem').onclick = () => {

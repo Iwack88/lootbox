@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1b1a2e">
 <meta http-equiv="Cache-Control" content="no-cache">
 <title>Lootbox Packer</title>
-<link rel="stylesheet" href="style.css?v=32">
+<link rel="stylesheet" href="style.css?v=34">
 </head>
 <body>
 <header>
@@ -96,12 +96,18 @@
   <div class="packing-layout">
 <section class="card" id="custCard">
   <div id="customer"></div>
+  <section id="packingNeeds" aria-labelledby="packingNeedsTitle" hidden>
+    <h3 id="packingNeedsTitle">Kundenwünsche</h3>
+    <div id="packingNeedValues" aria-live="polite"></div>
+    <p id="packingSponsorRequirement" class="hint" hidden></p>
+  </section>
 </section>
 
 <section class="card" id="boxCard">
   <div class="box-header">
     <div>
-      <h3>Box <small id="pickInfo"></small> <small id="slotInfo"></small></h3>
+      <h3 id="pickInfo"></h3>
+      <div id="slotInfo" class="box-slot-count"></div>
       <div id="boxEffects" class="box-effects"></div>
     </div>
     <img class="chest-art" src="assets/art/open-chest.svg" width="240" height="158" alt="">
@@ -110,30 +116,26 @@
   <div id="preview" class="preview"></div>
 </section>
   </div>
-  <div class="order-actions"><button id="send" class="primary">📦 Absenden</button></div>
-</section>
-</dialog>
-
-<dialog id="packingInventoryDialog" class="merchant-dialog item-dialog" aria-labelledby="packingInventoryTitle">
-  <div class="merchant-heading">
-    <h2 id="packingInventoryTitle">Slot befüllen</h2>
-    <button id="closePackingInventory" class="secondary">Zurück</button>
+<section id="packingInventoryPanel" class="packing-inventory-panel" aria-labelledby="packingInventoryTitle">
+  <div>
+    <div class="packing-inventory-heading">
+      <h3 id="packingInventoryTitle">Items &amp; Vorrat <small id="inventoryInfo"></small></h3>
+      <div class="packing-inventory-tools">
+        <button id="packingSupply" class="secondary">Bestellen</button>
+        <button id="restock" class="secondary">Notfall-Restock <small id="restockCost"></small></button>
+      </div>
+    </div>
+    <p id="packingSaveStatus" class="hint" role="status" hidden></p>
+    <p id="restockHint" class="hint" hidden></p>
   </div>
-  <p id="packingSaveStatus" class="hint" role="status" hidden></p>
-  <section id="packingNeeds" aria-labelledby="packingNeedsTitle" hidden>
-    <h3 id="packingNeedsTitle">Kundenwünsche</h3>
-    <div id="packingNeedValues" aria-live="polite"></div>
-    <p id="packingSponsorRequirement" class="hint" hidden></p>
-  </section>
-  <p class="hint">Wähle ein Item für Details und packe es anschließend ein.</p>
-  <div id="inventory" class="icon-grid"></div>
-  <div id="packingItemDetails" class="item-details" aria-live="polite"></div>
-  <button id="packingSupply" class="secondary">Vorrat ansehen &amp; nachbestellen</button>
-  <div class="restock-panel">
-    <button id="restock" class="secondary">Notfall-Restock</button>
-    <p id="restockHint" class="hint"></p>
+  <div id="inventory" class="icon-grid packing-inventory-list"></div>
+  <div class="packing-inventory-footer">
+    <div id="packingItemDetails" class="item-details" aria-live="polite"></div>
     <div id="restockResult" role="status"></div>
   </div>
+</section>
+  <div class="order-actions"><button id="send" class="primary">📦 Absenden</button></div>
+</section>
 </dialog>
 
 <dialog id="packedItemDialog" class="merchant-dialog item-dialog" aria-labelledby="packedItemTitle">
@@ -263,6 +265,6 @@
 
 <div id="result" class="overlay hidden"></div>
 <script src="sound.js?v=29"></script>
-<script src="game.js?v=34"></script>
+<script src="game.js?v=36"></script>
 </body>
 </html>

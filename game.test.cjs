@@ -247,7 +247,7 @@ test('individual slots select icons for details, retain their positions after re
     state.active.needs = [{attr:'hp', target:20, prio:2}]; render();`);
   assert.equal((run("$('box').innerHTML").match(/data-slot=/g) || []).length, 3);
   run('openBoxSlot(2)');
-  assert.equal(run("$('packingInventoryDialog').open"), true);
+  assert.equal(run('selectedSlot'), 2);
   assert.equal(run("$('packingNeeds').hidden"), false);
   assert.match(run("$('packingNeedValues').innerHTML"), /Leben.*wichtig.*0\/20/);
   assert.match(run("$('inventory').innerHTML"), /data-pack-item="pot1"/);
@@ -258,18 +258,16 @@ test('individual slots select icons for details, retain their positions after re
   assert.match(run("$('inventory').innerHTML"), /aria-hidden="true">🪄/);
   run("selectedPackingItem = 'pot1'; renderInventory()");
   assert.match(run("$('packingItemDetails').innerHTML"), /Leben: \+10/);
-  assert.match(run("$('packingItemDetails').innerHTML"), /Einpacken/);
+  assert.match(run("$('packingItemDetails').innerHTML"), /einpacken/i);
   run("$('confirmPackItem').onclick()");
-  assert.equal(run("$('packingInventoryDialog').open"), false);
   assert.equal(run('state.inventory.pot1'), 4);
   assert.deepEqual(JSON.parse(run('JSON.stringify(state.boxPositions)')), [2]);
   assert.match(run("$('box').innerHTML"), /Slot 3: Kleiner Heiltrank/);
   assert.match(run("$('box').innerHTML"), /assets\/art\/healing-potion\.svg/);
-  assert.match(run("$('customer').innerHTML"), /10\/20/);
+  assert.match(run("$('packingNeedValues').innerHTML"), /10\/20/);
   assert.match(run("$('preview').innerHTML"), /Aktuell: 50%/);
   run('openBoxSlot(1)');
   assert.match(run("$('packingNeedValues').innerHTML"), /Leben.*wichtig.*10\/20/);
-  run("$('closePackingInventory').onclick()");
   run("packItem('dag', 0); packItem('dag', 0); packItem('dag', 3)");
   assert.equal(run('state.box.length'), 2);
   const restored = createMilestoneGame({ storage });
@@ -306,7 +304,7 @@ test('tapping different inventory items previews needs without changing the box 
   assert.equal(storage.get(key), saved);
   assert.equal(run('state.box.length'), 1);
   assert.equal(run('state.inventory.dag'), 5);
-  run("$('closePackingInventory').onclick(); openBoxSlot(1)");
+  run('openBoxSlot(1)');
   assert.doesNotMatch(run("$('packingNeedValues').innerHTML"), /→/);
   assert.equal(storage.get(key), saved);
   run("icons[1].onclick(); $('confirmPackItem').onclick(); openBoxSlot(2)");
@@ -1357,10 +1355,10 @@ test('reward badges show the item icon and threshold and results explain the unm
   run(`Math.random = () => 0; globalThis.rollMaterialReward = () => false;
     globalThis.rollCustomerTier = () => CUSTOMER_TIERS.find(t => t.id === 'hero');
     state.queue = [generateCustomer()]; finishShopping(); selectCustomer(state.queue[0].id); chooseBox('small');`);
-  assert.match(run("$('customer').innerHTML"), /class="reward-icon"[^>]*>🥋/);
-  assert.match(run("$('customer').innerHTML"), /ab 85 %/);
-  assert.match(run("$('customer').innerHTML"), /aria-label="1 Plattenrüstung ab 85 % Boxqualität · Gewöhnlich · 🛡️ Rüstung: \+30"/);
-  assert.doesNotMatch(run("$('customer').innerHTML"), /✓ Reward|höchste erreichte Stufe/);
+  assert.match(run("$('preview').innerHTML"), /class="reward-icon"[^>]*>🥋/);
+  assert.match(run("$('preview').innerHTML"), /ab 85 %/);
+  assert.match(run("$('preview').innerHTML"), /aria-label="1 Plattenrüstung ab 85 % Boxqualität · Gewöhnlich · 🛡️ Rüstung: \+30"/);
+  assert.doesNotMatch(run("$('preview').innerHTML"), /✓ Reward|höchste erreichte Stufe/);
   run('send()');
   assert.match(run("$('result').innerHTML"), /Keine Itembelohnung – benötigt: 85 %/);
   assert.equal(run('Object.values(state.inventory).reduce((a, b) => a + b, 0)'), 0);
@@ -1941,7 +1939,7 @@ test('rare items unlock in the shop, transfer at checkout, and fulfill two needs
     for (const [attr, value] of attributes) {
       assert.equal(run(`totals()['${attr}']`), value);
       assert.ok(run("$('packedItemDetails').innerHTML").includes(run(`statsText({${attr}:${value}})`)));
-      assert.match(run("$('customer').innerHTML"), new RegExp(`${value}/${value}`));
+      assert.match(run("$('packingNeedValues').innerHTML"), new RegExp(`${value}/${value}`));
     }
     run('removeFromBox(0)');
     assert.equal(run('quality()'), 0);
