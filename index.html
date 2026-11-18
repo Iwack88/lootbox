@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1b1a2e">
 <meta http-equiv="Cache-Control" content="no-cache">
 <title>Lootbox Packer</title>
-<link rel="stylesheet" href="style.css?v=30">
+<link rel="stylesheet" href="style.css?v=31">
 </head>
 <body>
 <header>
@@ -57,7 +57,21 @@
   <p id="recruitStatus" class="hint" role="status"></p>
   <button id="recruitCustomer" class="secondary">Kunden anwerben · 10 Gold</button>
 </section>
+<section id="sponsorCard" class="card" hidden>
+  <h2>🧭 Abenteurer-Sponsoring</h2>
+  <p id="sponsorSummary" class="hint"></p>
+  <button id="openSponsor" class="secondary" aria-haspopup="dialog" aria-controls="sponsorDialog">Reise ansehen</button>
+</section>
 </main>
+
+<dialog id="sponsorDialog" class="merchant-dialog item-dialog" aria-labelledby="sponsorTitle">
+  <div class="merchant-heading">
+    <h2 id="sponsorTitle">Abenteurer-Reise</h2>
+    <button id="closeSponsor" class="secondary">Zurück</button>
+  </div>
+  <p id="sponsorSaveStatus" class="hint" role="status" hidden></p>
+  <div id="sponsorContent"></div>
+</dialog>
 
 <dialog id="orderDialog" class="order-dialog" aria-labelledby="orderTitle">
 <p id="orderSaveStatus" class="hint" role="status" hidden></p>
@@ -104,6 +118,7 @@
   <section id="packingNeeds" aria-labelledby="packingNeedsTitle" hidden>
     <h3 id="packingNeedsTitle">Kundenwünsche</h3>
     <div id="packingNeedValues" aria-live="polite"></div>
+    <p id="packingSponsorRequirement" class="hint" hidden></p>
   </section>
   <p class="hint">Wähle ein Item für Details und packe es anschließend ein.</p>
   <div id="inventory" class="icon-grid"></div>
@@ -243,6 +258,6 @@
 
 <div id="result" class="overlay hidden"></div>
 <script src="sound.js?v=29"></script>
-<script src="game.js?v=32"></script>
+<script src="game.js?v=33"></script>
 </body>
 </html>

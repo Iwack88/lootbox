@@ -198,6 +198,32 @@ const LEVEL_REWARDS = [
   { level: 25, items: { pot3: 2, warhammer: 1 }, discount: 20 },
 ];
 const LAST_MILESTONE = 25;
+const SPONSOR_LEVEL = 25;
+const SPONSOR_HP = 3;
+const SPONSOR_REST_MS = 4 * 60 * 60 * 1000;
+const SPONSOR_BOX = { id: 'sponsor', name: 'Spezialkiste', slots: 6, modifiers: {} };
+const SPONSOR_HEROES = [
+  { id: 'mira', name: 'Mira Nebelpfad', icon: '🧝‍♀️', voice: 'Ich zeichne Karten von Orten, die es angeblich nicht gibt.' },
+  { id: 'bren', name: 'Bren Kupferbart', icon: '🧔', voice: 'Ich suche die Glocke meiner Heimatstadt. Irgendwer hat sie unter Tage verschleppt.' },
+  { id: 'ysa', name: 'Ysa Funkenflug', icon: '🧙‍♀️', voice: 'Ich zähle meine guten Ideen. Meine schlechten habe ich längst verloren.' },
+  { id: 'taro', name: 'Taro Moosstein', icon: '🧑‍🌾', voice: 'Ich sammle Samen für einen Garten, der auch im Winter blüht.' },
+  { id: 'linn', name: 'Linn Sternfeder', icon: '🧕', voice: 'Ich will beweisen, dass die alten Lieder echte Geschichten erzählen.' },
+  { id: 'fenn', name: 'Fenn Nachtwind', icon: '🥷', voice: 'Ich war noch nie am Meer. Vielleicht führt mich diese Reise endlich dorthin.' },
+];
+const SPONSOR_STAGES = [
+  { title: 'Der verschüttete Eingang', question: 'Gehen wir durch die Höhle oder durch das Verlies?', routes: [
+    { name: 'Höhle', activity: 'erkundet die Höhle', item: 'sword', needs: { hp: 35, melee: 35 }, minutes: 30, threshold: 70, gold: 20, exp: 12 },
+    { name: 'Verlies', activity: 'durchsucht das Verlies', item: 'emberCharm', needs: { magic: 45, armor: 30 }, minutes: 45, threshold: 80, gold: 28, exp: 16 },
+  ] },
+  { title: 'Tief unter der Erde', question: 'Über den unterirdischen Fluss oder durch die alte Bibliothek?', routes: [
+    { name: 'Unterirdischer Fluss', activity: 'überquert den unterirdischen Fluss', item: 'restorationDraught', needs: { hp: 65, armor: 40 }, minutes: 45, threshold: 75, gold: 25, exp: 15 },
+    { name: 'Alte Bibliothek', activity: 'entziffert Runen in der Bibliothek', item: 'runeFocus', needs: { magic: 65, hp: 40 }, minutes: 60, threshold: 85, gold: 32, exp: 19 },
+  ] },
+  { title: 'Die versunkene Sternwarte', question: 'Nehmen wir den Wächterpfad oder den überwucherten Geheimgang?', routes: [
+    { name: 'Wächterpfad', activity: 'bahnt sich den Weg zur Sternwarte', item: 'plate', needs: { armor: 60, melee: 45, hp: 35 }, minutes: 60, threshold: 80, gold: 30, exp: 18 },
+    { name: 'Überwucherter Geheimgang', activity: 'sucht den Geheimgang zur Sternwarte', item: 'lifebloomStaff', needs: { hp: 70, magic: 65, armor: 30 }, minutes: 75, threshold: 90, gold: 38, exp: 24 },
+  ] },
+];
 
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 
@@ -254,6 +280,7 @@ function unlocksAtLevel(level) {
     ...(!MERCHANT_ENABLED ? ORDER_QUANTITIES.filter(entry => entry.level === level).map(entry => `Bestellmenge: bis zu ${entry.count} Stück pro Bestellung`) : []),
     ...(!MERCHANT_ENABLED ? ORDER_CATALOG.filter(entry => entry.level === level).map(entry => `Bestellbar: ${ITEMS.find(item => item.id === entry.item).name}`) : []),
     ...(!STREAK_ENABLED ? levelRewardDescriptions(level) : []),
+    ...(level === SPONSOR_LEVEL ? ['Sponsoring: einen Abenteurer auf seiner Reise begleiten'] : []),
   ];
 }
 
@@ -337,7 +364,7 @@ const state = {
   streak: 0, claimedCheckpoints: [], pendingDiscounts: [], activeDiscount: null,
   materials: { wood: 0, iron: 0, cloth: 0 }, crafts: [],
   orders: [], boxPositions: [],
-  claimedLevelRewards: [], levelDiscounts: [],
+  claimedLevelRewards: [], levelDiscounts: [], sponsorship: null,
 };
 
 const SAVE_KEY = 'lootboxPacker.save';
@@ -347,7 +374,7 @@ let savingBlocked = false;
 let storageError = '';
 
 function showSaveStatus(message, error = false) {
-  for (const id of ['saveStatus', 'saveAlert', 'orderSaveStatus', 'packingSaveStatus', 'packedItemSaveStatus', 'shopSaveStatus', 'workshopSaveStatus', 'supplySaveStatus']) {
+  for (const id of ['saveStatus', 'saveAlert', 'orderSaveStatus', 'packingSaveStatus', 'packedItemSaveStatus', 'shopSaveStatus', 'workshopSaveStatus', 'supplySaveStatus', 'sponsorSaveStatus']) {
     if ($(id).textContent !== message) $(id).textContent = message;
     $(id).classList.toggle('error', error);
     $(id).hidden = id !== 'saveStatus' && !error;
@@ -384,6 +411,28 @@ function savedCustomer(customer) {
     needs: customer.needs, ...(customer.itemReward.item
       ? { rewardItem: customer.itemReward.item.id }
       : { rewardMaterial: customer.itemReward.material }) };
+}
+
+function decodeSponsorship(value, level, require, record, count) {
+  if (value === undefined || value === null) return null;
+  require(record(value) && level >= SPONSOR_LEVEL);
+  const knownHero = id => SPONSOR_HEROES.some(hero => hero.id === id);
+  if (Array.isArray(value.candidates)) {
+    require(value.candidates.length === 3 && new Set(value.candidates).size === 3 && value.candidates.every(knownHero));
+    return { candidates: [...value.candidates] };
+  }
+  const { hero, stage, hp, route, packing, trip, recoverAt, report } = value;
+  const validRoute = (stage, route) => count(stage) && count(route) && !!SPONSOR_STAGES[stage]?.routes[route];
+  const validQuality = quality => count(quality) && quality <= 100;
+  require(knownHero(hero) && count(stage) && stage <= SPONSOR_STAGES.length && count(hp) && hp <= SPONSOR_HP);
+  require(typeof packing === 'boolean' && (route === null || validRoute(stage, route))
+    && (recoverAt === null ? hp > 0 : count(recoverAt) && hp === 0)
+    && (!packing || (route !== null && trip === null && recoverAt === null)));
+  require(trip === null || (record(trip) && route !== null && recoverAt === null && count(trip.finishAt) && validQuality(trip.quality)));
+  require(report === null || (record(report) && validRoute(report.stage, report.route) && validQuality(report.quality)));
+  return { hero, stage, hp, route, packing, recoverAt,
+    trip: trip && { finishAt: trip.finishAt, quality: trip.quality },
+    report: report && { stage: report.stage, route: report.route, quality: report.quality } };
 }
 
 function saveGame() {
@@ -456,11 +505,14 @@ function decodeSave(data) {
   require(Array.isArray(saved.queue) && Array.isArray(saved.box) && Array.isArray(saved.shopOffers));
   const queue = saved.queue.map(customerFor);
   const active = saved.active === null ? null : customerFor(saved.active);
+  const sponsorship = decodeSponsorship(saved.sponsorship, level, require, record, count);
   const customers = [...queue, ...(active ? [active] : [])];
   require(customers.length <= CUSTOMER_PLACES.filter(entry => entry.level <= level).at(-1).count);
   require(new Set(customers.map(customer => customer.id)).size === customers.length);
-  const boxType = saved.boxType === null ? null : BOXES.find(box => box.id === saved.boxType && box.level <= level);
-  require(boxType !== undefined && (!boxType || active));
+  const boxType = saved.boxType === SPONSOR_BOX.id ? SPONSOR_BOX
+    : saved.boxType === null ? null : BOXES.find(box => box.id === saved.boxType && box.level <= level);
+  require(boxType !== undefined && (sponsorship?.packing
+    ? boxType === SPONSOR_BOX && !active && !saved.shopping : boxType !== SPONSOR_BOX && (!boxType || active)));
   const box = saved.box.map(itemFor);
   require(box.length <= (boxType?.slots || 0));
   const boxPositions = saved.boxPositions === undefined ? box.map((_, index) => index) : saved.boxPositions;
@@ -506,7 +558,7 @@ function decodeSave(data) {
     spawnT: saved.spawnT, shopping: saved.shopping, showingResult: false, inventory, cart, boxType, box, boxPositions: [...boxPositions], active, queue,
     shopOffers, claimedCheckpoints, pendingDiscounts, activeDiscount, materials: { ...materials }, crafts: crafts.map(craft => ({ ...craft })),
     orders: orders.map(order => ({ item: order.item, quantity: order.quantity, finishAt: order.finishAt })),
-    claimedLevelRewards: [...claimedLevelRewards], levelDiscounts: [...levelDiscounts] };
+    claimedLevelRewards: [...claimedLevelRewards], levelDiscounts: [...levelDiscounts], sponsorship };
 }
 
 function loadGame() {
@@ -553,6 +605,7 @@ function syncTime(now = Date.now()) {
     renderInventory();
   }
   tick(elapsed);
+  return advanceSponsorship();
 }
 
 function changeStreak(points) {
@@ -660,6 +713,14 @@ const capacity = () => state.boxType ? state.boxType.slots : 0;
 
 const usedSlots = () => state.box.length;
 
+function packingCustomer() {
+  const sponsor = state.sponsorship;
+  if (!sponsor?.packing) return state.active;
+  const hero = SPONSOR_HEROES.find(hero => hero.id === sponsor.hero);
+  const route = SPONSOR_STAGES[sponsor.stage].routes[sponsor.route];
+  return { ...hero, needs: Object.entries(route.needs).map(([attr, target]) => ({ attr, target, prio: 2 })) };
+}
+
 function totals(previewItem = null) {
   const t = {};
   if (state.boxType) {
@@ -675,7 +736,7 @@ function totals(previewItem = null) {
 function quality() {
   const t = totals();
   let sum = 0, wsum = 0;
-  for (const n of state.active.needs) {
+  for (const n of packingCustomer().needs) {
     const w = NEED_WEIGHT[n.prio];
     sum += w * Math.min(1, Math.max(0, t[n.attr] || 0) / n.target);
     wsum += w;
@@ -787,7 +848,7 @@ function emergencyRestock() {
 
 function packItem(id, position = null) {
   const it = ITEMS.find(i => i.id === id);
-  if (!it || !isUnlocked(it) || !state.active || !state.boxType || !state.inventory[id] || usedSlots() >= capacity()) return;
+  if (!it || !isUnlocked(it) || !state.boxType || !state.inventory[id] || usedSlots() >= capacity()) return;
   if (position === null) position = Array.from({ length: capacity() }, (_, i) => i).find(i => !state.boxPositions.includes(i));
   if (!Number.isInteger(position) || position < 0 || position >= capacity() || state.boxPositions.includes(position)) return;
   state.inventory[id]--;
@@ -808,7 +869,7 @@ function removeFromBox(index) {
 }
 
 function selectCustomer(id) {
-  if (state.shopping || state.showingResult) return;
+  if (state.shopping || state.showingResult || state.sponsorship?.packing) return;
   const i = state.queue.findIndex(c => c.id === id);
   if (i < 0) return;
   const chosen = state.queue[i];
@@ -835,6 +896,14 @@ function chooseBox(id) {
 }
 
 function backToBoxes() {
+  if (state.sponsorship?.packing) {
+    returnBoxToInventory();
+    state.boxType = null;
+    state.sponsorship.packing = false;
+    render();
+    openSponsorship();
+    return;
+  }
   if (state.shopping || state.showingResult || !state.active || !state.boxType) return;
   returnBoxToInventory();
   state.boxType = null;
@@ -854,6 +923,10 @@ function backToCustomers() {
 }
 
 function send() {
+  if (state.sponsorship?.packing) {
+    launchSponsorship();
+    return;
+  }
   if (state.shopping || state.showingResult || !state.active || !state.boxType) return;
   syncTime();
   const q = quality();
@@ -933,6 +1006,151 @@ function tick(dt) {
   }
 }
 
+function openSponsorship() {
+  if (progression().level < SPONSOR_LEVEL || state.active || state.boxType || state.shopping || state.showingResult) return;
+  if (syncTime()) render();
+  if (!state.sponsorship) {
+    const pool = SPONSOR_HEROES.map(hero => hero.id);
+    state.sponsorship = { candidates: Array.from({ length: 3 }, () => pool.splice(Math.floor(Math.random() * pool.length), 1)[0]) };
+    saveGame();
+  }
+  $('sponsorDialog').showModal();
+  renderSponsorship();
+}
+
+function chooseSponsor(id) {
+  if (!state.sponsorship?.candidates?.includes(id)) return;
+  state.sponsorship = { hero: id, stage: 0, hp: SPONSOR_HP, route: null, packing: false, trip: null, recoverAt: null, report: null };
+  render();
+}
+
+function startSponsorPacking() {
+  const sponsor = state.sponsorship;
+  if (!sponsor?.hero || sponsor.route === null || sponsor.trip || sponsor.recoverAt !== null || state.active || state.boxType
+    || state.shopping || state.showingResult) return;
+  $('sponsorDialog').close();
+  sponsor.packing = true;
+  state.boxType = SPONSOR_BOX;
+  render();
+  $('orderDialog').scrollTop = 0;
+  $('packingTitle').focus();
+}
+
+function sponsorDamage(route, quality) {
+  return quality >= route.threshold ? 0 : quality * 2 >= route.threshold ? 1 : 2;
+}
+
+function launchSponsorship() {
+  const sponsor = state.sponsorship;
+  if (!sponsor?.packing || state.boxType !== SPONSOR_BOX) return;
+  const route = SPONSOR_STAGES[sponsor.stage].routes[sponsor.route];
+  if (!state.box.some(item => item.id === route.item)) return;
+  syncTime();
+  sponsor.trip = { finishAt: lastUpdatedAt + route.minutes * 60000, quality: qualityPercent(quality()) };
+  sponsor.packing = false;
+  state.box = [];
+  state.boxPositions = [];
+  state.boxType = null;
+  sfx.play('send');
+  render();
+  openSponsorship();
+}
+
+function advanceSponsorship() {
+  const sponsor = state.sponsorship;
+  if (!sponsor?.hero) return false;
+  let changed = false;
+  if (sponsor.trip && sponsor.trip.finishAt <= lastUpdatedAt) {
+    const { finishAt, quality } = sponsor.trip;
+    const route = SPONSOR_STAGES[sponsor.stage].routes[sponsor.route];
+    sponsor.report = { stage: sponsor.stage, route: sponsor.route, quality };
+    sponsor.trip = null;
+    const damage = sponsorDamage(route, quality);
+    if (!damage) {
+      sponsor.stage++;
+      sponsor.route = null;
+      sponsor.hp = Math.min(SPONSOR_HP, sponsor.hp + 1);
+      const previousLevel = progression().level;
+      const repayment = Math.min(state.debt, route.gold);
+      state.debt -= repayment;
+      state.gold += route.gold - repayment;
+      state.exp += route.exp;
+      if (!STREAK_ENABLED) grantLevelRewards(previousLevel, progression().level);
+    } else {
+      sponsor.hp = Math.max(0, sponsor.hp - damage);
+      if (!sponsor.hp) sponsor.recoverAt = finishAt + SPONSOR_REST_MS;
+    }
+    changed = true;
+  }
+  if (sponsor.recoverAt !== null && sponsor.recoverAt <= lastUpdatedAt) {
+    sponsor.recoverAt = null;
+    sponsor.hp = SPONSOR_HP;
+    changed = true;
+  }
+  return changed;
+}
+
+function sponsorCountdown(endAt) {
+  const minutes = Math.max(0, Math.ceil((endAt - lastUpdatedAt) / 60000));
+  return minutes >= 60 ? `${Math.floor(minutes / 60)} Std. ${minutes % 60} Min.` : `${minutes} Min.`;
+}
+
+function renderSponsorship() {
+  const unlocked = progression().level >= SPONSOR_LEVEL;
+  $('sponsorCard').hidden = !unlocked;
+  if (!unlocked) return;
+  const sponsor = state.sponsorship;
+  const hero = SPONSOR_HEROES.find(hero => hero.id === sponsor?.hero);
+  const stage = SPONSOR_STAGES[sponsor?.stage];
+  const route = stage?.routes[sponsor.route];
+  const status = !hero ? 'Wähle einen Abenteurer und begleite seine Reise.'
+    : sponsor.trip ? `${hero.name} ${route.activity} · noch ${sponsorCountdown(sponsor.trip.finishAt)}`
+    : sponsor.recoverAt !== null ? `${hero.name} erholt sich · noch ${sponsorCountdown(sponsor.recoverAt)}`
+    : stage ? `${hero.name} wartet auf Ausrüstung.` : `${hero.name} hat das Reisekapitel abgeschlossen.`;
+  $('sponsorSummary').textContent = status;
+  if (!$('sponsorDialog').open) return;
+  if (!hero) {
+    $('sponsorContent').innerHTML = `<p>Wähle eine von drei Figuren. Für dieses Kapitel kannst du eine Person sponsern.</p>
+      <div class="sponsor-list">${sponsor.candidates.map(id => {
+        const candidate = SPONSOR_HEROES.find(hero => hero.id === id);
+        return `<button class="secondary sponsor-candidate" data-hero="${id}"><span class="sponsor-portrait" aria-hidden="true">${candidate.icon}</span>
+          <span><strong>${candidate.name}</strong><br><span>„${candidate.voice}“</span></span></button>`;
+      }).join('')}</div>`;
+    $('sponsorContent').querySelectorAll('[data-hero]').forEach(button => button.onclick = () => {
+      chooseSponsor(button.dataset.hero);
+      $('closeSponsor').focus();
+    });
+    return;
+  }
+  const report = sponsor.report;
+  const pastRoute = report && SPONSOR_STAGES[report.stage].routes[report.route];
+  const damage = report && sponsorDamage(pastRoute, report.quality);
+  $('sponsorContent').innerHTML = `<div class="sponsor-candidate"><span class="sponsor-portrait" aria-hidden="true">${hero.icon}</span>
+    <div><strong>${hero.name}</strong><br>Level ${sponsor.stage + 1} · ${sponsor.stage * 100} Reise-EXP · ${sponsor.hp}/${SPONSOR_HP} HP<br>„${hero.voice}“</div></div>
+    <p>${status}</p>
+    ${report ? `<p class="sponsor-report"><strong>Letzter Reisebericht · ${pastRoute.name}</strong><br>${damage
+      ? `„Ich musste umkehren. Die Ausrüstung hat nicht gereicht.“ (${report.quality} % Qualität, −${damage} HP bis mindestens 0)`
+      : `„Wir haben es geschafft!“ (${report.quality} % Qualität, +100 Reise-EXP, +${pastRoute.gold} Gold vor Vorschussabzug, +${pastRoute.exp} Spieler-EXP)`}</p>` : ''}
+    ${stage ? `<h3>Etappe ${sponsor.stage + 1}/${SPONSOR_STAGES.length}: ${stage.title}</h3>` : '<h3>Kapitel abgeschlossen</h3><p>Die Sternwarte ist wiederentdeckt. Eure Reise bleibt gespeichert.</p>'}
+    ${stage && !sponsor.trip && sponsor.recoverAt === null ? `<p>„${stage.question}“</p>
+      <p class="hint">Ohne Lieferung wartet dein Abenteurer sicher. Das Pflichtitem jeder Route gibt es als Belohnung normaler Kunden, nicht per Bestellung.</p>
+      <div class="sponsor-list">${stage.routes.map((option, index) => {
+        const item = ITEMS.find(item => item.id === option.item);
+        const stock = state.inventory[item.id] || 0;
+        const needs = Object.entries(option.needs).map(([attr, target]) => `${ATTRS[attr].icon} ${ATTRS[attr].name} ${target}`).join(' · ');
+        return `<button class="secondary sponsor-route" data-route="${index}" aria-pressed="${sponsor.route === index}">
+          <strong>${option.name}</strong><br>${needs}<br>Pflicht: ${item.icon} ${item.name} (${stock} im Lager)<br>
+          <small>${option.minutes} Min. · ab ${option.threshold} % erfolgreich · ${option.gold} Gold + ${option.exp} EXP</small></button>`;
+      }).join('')}</div>
+      <button id="startSponsorPacking" class="primary" ${route ? '' : 'disabled'}>Spezialkiste packen</button>` : ''}`;
+  $('sponsorContent').querySelectorAll('[data-route]').forEach(button => button.onclick = () => {
+    sponsor.route = Number(button.dataset.route);
+    render();
+    $('sponsorContent').querySelector(`[data-route="${sponsor.route}"]`)?.focus();
+  });
+  if (stage && !sponsor.trip && sponsor.recoverAt === null) $('startSponsorPacking').onclick = startSponsorPacking;
+}
+
 function needsHtml(c, t, preview = t) {
   return c.needs.map(n => {
     const have = Math.max(0, t[n.attr] || 0);
@@ -1002,7 +1220,9 @@ function updateArrivalStatus() {
 
 function render() {
   syncTime();
-  const c = state.active;
+  const c = packingCustomer();
+  const sponsor = state.sponsorship;
+  const sponsorRoute = sponsor?.packing ? SPONSOR_STAGES[sponsor.stage].routes[sponsor.route] : null;
   renderStreak();
   $('gold').textContent = state.gold;
   $('shopGold').textContent = state.gold;
@@ -1039,10 +1259,12 @@ function render() {
   $('restock').textContent = `Notfall-Restock · ${RESTOCK_COST} Gold`;
   $('restockHint').textContent = `${RESTOCK_SIZE} zufällige Basis-Items: kleiner Heiltrank, Kurzschwert, Holzschild oder Zauberstab. Mindestens zwei Attribute. Fehlendes Gold wird als Vorschuss mit künftigen Goldbelohnungen verrechnet. ${state.debt ? 'Kein weiterer Vorschuss, bis die offene Gebühr bezahlt ist.' : ''}`;
 
-  $('customer').innerHTML = c
+  $('customer').innerHTML = sponsorRoute
+    ? `<div class="cust-name">${c.icon} ${c.name} <small>· ${sponsorRoute.name}</small></div>${needsHtml(c, totals())}`
+    : c
     ? `<div class="cust-name r-${c.rarity} tier-${c.tier}">${c.icon} ${c.name} <small>${c.cls} · ${c.tierLabel} · ${RARITY[c.rarity].label}</small></div>` + needsHtml(c, totals()) + itemRewardHtml(c, rewardFor(quality(), c).earned)
     : '<div class="empty">Wähle einen Kunden aus der Liste</div>';
-  $('selectionCustomer').innerHTML = c
+  $('selectionCustomer').innerHTML = c && !sponsorRoute
     ? `<div class="cust-name r-${c.rarity} tier-${c.tier}">${c.icon} ${c.name} <small>${c.cls} · ${c.tierLabel} · ${RARITY[c.rarity].label}</small></div>` + needsHtml(c, {}) + itemRewardHtml(c)
     : '';
 
@@ -1058,7 +1280,15 @@ function render() {
   $('slotInfo').textContent = state.boxType ? `${used}/${capacity()} Items` : '';
   $('boxEffects').textContent = state.boxType ? `Kisteneffekt: ${boxEffectsText(state.boxType)}` : '';
 
-  if (c) {
+  const hasRequiredItem = sponsorRoute && state.box.some(item => item.id === sponsorRoute.item);
+  if (sponsorRoute) {
+    const item = ITEMS.find(item => item.id === sponsorRoute.item);
+    const score = qualityPercent(quality());
+    const damage = sponsorDamage(sponsorRoute, score);
+    $('preview').innerHTML = `<div>Qualität: ${score} % · Ziel: ${sponsorRoute.threshold} %</div>
+      <div>${hasRequiredItem ? '✓' : 'Fehlt:'} ${item.icon} ${item.name} (Pflicht)</div>
+      ${hasRequiredItem ? `<div>${damage ? `Rückzug: −${Math.min(damage, sponsor.hp)} HP${damage >= sponsor.hp ? ' · danach 4 Std. Erholung' : ''}` : 'Erfolg: +100 Reise-EXP · +1 HP bis zum Maximum'}</div>` : ''}`;
+  } else if (c) {
     const q = quality(), r = rewardFor(q, c);
     const itemCost = state.box.reduce((sum, item) => sum + shopPrice(item), 0);
     const repayment = Math.min(state.debt, r.gold);
@@ -1072,7 +1302,10 @@ function render() {
   } else {
     $('preview').textContent = '';
   }
-  $('send').disabled = state.shopping || state.showingResult || !c || !state.boxType;
+  $('send').disabled = state.shopping || state.showingResult || !c || !state.boxType || !!(sponsorRoute && !hasRequiredItem);
+  $('send').textContent = sponsorRoute ? '🎒 Expedition starten' : '📦 Absenden';
+  $('backToBoxes').textContent = sponsorRoute ? '← Reise' : '← Box wählen';
+  $('packingTitle').textContent = sponsorRoute ? 'Spezialkiste packen' : 'Box packen';
 
   const shopRow = it => {
     const inCart = state.cart[it.id] || 0;
@@ -1104,6 +1337,7 @@ function render() {
   renderQueue();
   renderWorkshop();
   renderSupply();
+  renderSponsorship();
   const orderDialog = $('orderDialog');
   $('boxSelection').hidden = !c || !!state.boxType;
   $('packingView').hidden = !c || !state.boxType;
@@ -1127,7 +1361,7 @@ function itemInfoHtml(item) {
 }
 
 function openBoxSlot(position) {
-  if (!state.active || !state.boxType || !Number.isInteger(position) || position < 0 || position >= capacity()) return;
+  if (!state.boxType || !Number.isInteger(position) || position < 0 || position >= capacity()) return;
   selectedSlot = position;
   const index = state.boxPositions.indexOf(position);
   if (index >= 0) {
@@ -1141,13 +1375,22 @@ function openBoxSlot(position) {
 }
 
 function renderInventory() {
-  const customer = state.active;
+  const customer = packingCustomer();
   const owned = ITEMS.filter(it => state.inventory[it.id] > 0);
   const item = owned.find(it => it.id === selectedPackingItem);
   const previewItem = item && isUnlocked(item) && selectedSlot !== null
     && selectedSlot < capacity() && !state.boxPositions.includes(selectedSlot) ? item : null;
   $('packingNeeds').hidden = !customer || !state.boxType;
   $('packingNeedsTitle').textContent = previewItem ? 'Kundenwünsche · Vorschau' : 'Kundenwünsche';
+  const sponsor = state.sponsorship;
+  const requirement = $('packingSponsorRequirement');
+  requirement.hidden = !sponsor?.packing;
+  if (sponsor?.packing) {
+    const route = SPONSOR_STAGES[sponsor.stage].routes[sponsor.route];
+    const required = ITEMS.find(item => item.id === route.item);
+    const packed = state.box.some(item => item.id === route.item);
+    requirement.textContent = `Pflicht: ${required.icon} ${required.name} · ${packed ? 'eingepackt' : previewItem === required ? 'ausgewählt' : 'noch nicht eingepackt'}`;
+  }
   if ($('packingNeeds').hidden) {
     $('packingNeedValues').innerHTML = '';
   } else {
@@ -1246,8 +1489,8 @@ function renderWorkshop() {
 }
 
 function openWorkshop() {
-  if (!workshopCapacity() || state.shopping || state.showingResult || state.active) return;
-  syncTime();
+  if (!workshopCapacity() || state.shopping || state.showingResult || state.active || state.boxType) return;
+  if (syncTime()) render();
   $('workshopDialog').showModal();
   renderWorkshop();
 }
@@ -1255,7 +1498,7 @@ function openWorkshop() {
 const orderDrafts = {};
 
 function placeOrder(id, quantity) {
-  syncTime();
+  const expeditionUpdated = syncTime();
   const item = ITEMS.find(entry => entry.id === id);
   let error = '';
   if (!item || !canOrder(item)) error = 'Dieses Item ist noch nicht bestellbar.';
@@ -1265,7 +1508,8 @@ function placeOrder(id, quantity) {
   if (error) {
     $('supplyMessage').textContent = error;
     $('supplyMessage').classList.add('error');
-    renderSupply();
+    if (expeditionUpdated) render();
+    else renderSupply();
     return;
   }
   const price = orderPrice(item, quantity);
@@ -1357,13 +1601,15 @@ function renderSupply() {
 
 function openSupply() {
   if (state.showingResult) return;
-  syncTime();
+  if (syncTime()) render();
   $('supplyDialog').showModal();
   renderSupply();
   saveGame();
 }
 
 $('send').onclick = send;
+$('openSponsor').onclick = openSponsorship;
+$('closeSponsor').onclick = () => $('sponsorDialog').close();
 $('recruitCustomer').onclick = recruitCustomer;
 $('openSupply').onclick = openSupply;
 $('packingSupply').onclick = openSupply;
@@ -1416,7 +1662,11 @@ if (!loadGame()) {
 }
 render();
 document.addEventListener('visibilitychange', () => {
-  syncTime();
+  if (syncTime()) {
+    render();
+    return;
+  }
+  if (state.sponsorship?.trip || state.sponsorship?.recoverAt) renderSponsorship();
   renderWorkshop();
   renderSupply();
   saveGame();
@@ -1432,7 +1682,11 @@ window.addEventListener('storage', event => {
 });
 setInterval(() => {
   const ordersBefore = state.orders.length;
-  syncTime();
+  if (syncTime()) {
+    render();
+    return;
+  }
+  if (state.sponsorship?.trip || state.sponsorship?.recoverAt) renderSponsorship();
   if (ordersBefore !== state.orders.length) renderSupply(); else renderDeliveries();
   if ($('workshopDialog').open && !document.hidden) {
     const focused = document.activeElement;

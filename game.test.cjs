@@ -122,6 +122,97 @@ function createMilestoneGame(options = {}) {
   return createOrderingGame({ ...options, legacyStreak: false });
 }
 
+test('sponsoring unlocks at 25, persists the candidates and uses regular customer loot in a separate packing flow', () => {
+  const storage = new Map();
+  const run = createMilestoneGame({ storage });
+  run("$('openSponsor').onclick()");
+  assert.equal(run("$('sponsorCard').hidden"), true);
+  assert.equal(run('state.sponsorship'), null);
+  run("state.exp = expForLevel(25); render(); $('openSponsor').onclick()");
+  assert.equal(run(`SPONSOR_STAGES.every(stage => stage.routes.every(route => {
+    const item = ITEMS.find(item => item.id === route.item);
+    return isUnlocked(item) && !canOrder(item) && CUSTOMER_TIERS.some(tier => tier.reward.ids.includes(item.id));
+  }))`), true, 'each route depends on equipment available through normal customer rewards');
+  assert.equal(run("$('sponsorDialog').open"), true);
+  assert.equal(run('new Set(state.sponsorship.candidates).size'), 3);
+  const candidates = run('JSON.stringify(state.sponsorship.candidates)');
+  const restored = createMilestoneGame({ storage });
+  assert.equal(restored('JSON.stringify(state.sponsorship.candidates)'), candidates);
+  restored(`openSponsorship(); chooseSponsor(state.sponsorship.candidates[0]);
+    globalThis.routes = [0,1].map(route => ({dataset:{route:String(route)}}));
+    $('sponsorContent').querySelectorAll = () => routes; renderSponsorship(); routes[1].onclick();`);
+  assert.match(restored("$('sponsorContent').innerHTML"), /Glutamulett/);
+  restored("routes[0].onclick(); $('startSponsorPacking').onclick(); packItem('pot1', 2); $('send').onclick()");
+  assert.equal(restored('state.sponsorship.trip'), null);
+  assert.equal(restored("$('send').disabled"), true);
+  assert.equal(restored('state.active'), null);
+  assert.equal(restored('state.queue.length'), 4);
+  const packing = createMilestoneGame({ storage });
+  assert.equal(packing('state.boxType === SPONSOR_BOX && state.boxPositions[0] === 2'), true);
+  assert.match(packing("$('preview').innerHTML"), /Fehlt: .*Schwert/);
+  packing("$('backToBoxes').onclick()");
+  assert.equal(packing('state.inventory.pot1'), 5);
+  assert.equal(packing('state.boxType'), null);
+  assert.equal(packing("$('sponsorDialog').open"), true);
+  packing(`$('closeSponsor').onclick(); selectCustomer(state.queue[0].id); chooseBox('small');
+    state.active.needs = [{attr:'hp',target:10,prio:1}];
+    state.active.itemReward = {quality: .5, item: ITEMS.find(item => item.id === 'sword')};
+    packItem('pot1'); send(); $('next').onclick();`);
+  assert.equal(packing('state.inventory.sword'), 1);
+  packing('openSponsorship(); startSponsorPacking(); packItem("sword"); send()');
+  assert.equal(packing('state.inventory.sword'), 0);
+  assert.equal(packing('state.queue.length'), 3);
+  assert.equal(packing('state.sponsorship.trip.quality'), 21);
+});
+
+test('expeditions resolve offline once, recovery starts at arrival, and three successes finish the chapter', () => {
+  const storage = new Map();
+  let now = 1_700_000_000_000;
+  const options = { storage, now: () => now };
+  const run = createMilestoneGame(options);
+  run(`state.exp = expForLevel(25); openSponsorship(); chooseSponsor(state.sponsorship.candidates[0]);
+    state.sponsorship.route = 0; state.inventory.sword = 3; render();`);
+  now += 48 * 60 * 60000;
+  const waiting = createMilestoneGame(options);
+  assert.equal(waiting('state.sponsorship.hp'), 3);
+  waiting('startSponsorPacking(); packItem("sword"); send();');
+  now += 30 * 60000 - 1;
+  const traveling = createMilestoneGame(options);
+  assert.equal(traveling('state.sponsorship.hp'), 3);
+  now++;
+  traveling('intervals[0]()');
+  assert.equal(traveling('state.sponsorship.hp'), 1);
+  assert.equal(traveling('state.sponsorship.stage'), 0);
+  traveling('startSponsorPacking(); packItem("sword"); send()');
+  now += 30 * 60000 + 4 * 60 * 60000 - 1;
+  const recovering = createMilestoneGame(options);
+  assert.equal(recovering('state.sponsorship.hp'), 0);
+  recovering('startSponsorPacking()');
+  assert.equal(recovering('state.boxType'), null);
+  now++;
+  recovering('intervals[0]()');
+  assert.equal(recovering('state.sponsorship.hp'), 3);
+  assert.equal(recovering('state.gold'), 500);
+  const loadouts = [
+    ['sword','sword','dag','pot1','pot1','pot1'],
+    ['restorationDraught','pot2','shield','shield','shield','shield'],
+    ['plate','plate','warhammer','dag','pot2','pot1'],
+  ];
+  let game = recovering;
+  for (const [stage, items] of loadouts.entries()) {
+    game(`state.sponsorship.route = 0; startSponsorPacking();
+      for (const id of ${JSON.stringify(items)}) { state.inventory[id] = 1; packItem(id); } send();`);
+    now = game('state.sponsorship.trip.finishAt');
+    game = createMilestoneGame(options);
+    assert.equal(game('state.sponsorship.stage'), stage + 1);
+  }
+  assert.equal(game('state.gold'), 575);
+  assert.equal(game('state.exp - expForLevel(25)'), 45);
+  game('openSponsorship()');
+  assert.match(game("$('sponsorContent').innerHTML"), /Level 4.*Kapitel abgeschlossen/s);
+  assert.equal(createMilestoneGame(options)('state.gold'), 575);
+});
+
 test('customers can be recruited for 10 gold only when a queue place and enough gold are available', () => {
   const storage = new Map();
   const run = createMilestoneGame({ storage });
