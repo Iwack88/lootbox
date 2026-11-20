@@ -965,6 +965,35 @@ function backToCustomers() {
   $('queueTitle').focus();
 }
 
+function rewardCustomerMessage(customer, q) {
+  const perfect = [
+    'Perfekt! Damit werde ich jeden Gegner überraschen.',
+    'Das wird mir helfen – ich kann jederzeit losziehen!',
+    'Du hast genau verstanden, was ich brauche. Vielen Dank!',
+    'Mit dieser Ausrüstung kehre ich als Held zurück!'
+  ];
+  const good = [
+    'Danke! Damit komme ich sicherer durch das Abenteuer.',
+    'Eine gute Auswahl. Das wird meinen nächsten Kampf erleichtern!',
+    'Damit bin ich für den Dungeon bestens vorbereitet.',
+    'Sehr brauchbar – ich werde auf dich setzen!'
+  ];
+  const partial = [
+    'Nicht perfekt, aber besser als mit leeren Händen.',
+    'Das hilft mir etwas. Beim nächsten Auftrag hoffe ich auf mehr!',
+    'Ein paar gute Sachen sind dabei – vielen Dank.',
+    'Ich werde das Beste daraus machen.'
+  ];
+  const low = [
+    'Das wird schwierig… aber ich gebe mein Bestes.',
+    'Hoffentlich reicht das für den ersten Dungeon-Flur.',
+    'Nicht ganz das, was ich gehofft habe. Trotzdem danke.',
+    'Ich kann noch Gebrauch davon machen.'
+  ];
+  const pool = q >= 0.9 ? perfect : q >= 0.6 ? good : q >= 0.3 ? partial : low;
+  return pool[(customer.id + Math.round(q * 10)) % pool.length];
+}
+
 function send() {
   if (state.sponsorship?.packing) {
     launchSponsorship();
@@ -972,6 +1001,7 @@ function send() {
   }
   if (state.shopping || state.showingResult || !state.active || !state.boxType) return;
   syncTime();
+  const rewardedCustomer = state.active;
   const q = quality();
   const r = rewardFor(q, state.active);
   const itemRewardResult = r.earned ? itemRewardHtml(state.active, true)
@@ -1007,15 +1037,24 @@ function send() {
   }
   const label = q >= 0.9 ? 'Perfekt!' : q >= 0.6 ? 'Gut' : q >= 0.3 ? 'Geht so' : 'Schlecht';
   $('result').innerHTML = `
-    <h1>${label}</h1>
-    <div>Erfüllung: ${qualityPercent(q)}%</div>
-    <div>💰 +${r.gold} &nbsp; ⭐ +${r.exp}</div>
-    ${STREAK_ENABLED ? `<div>Serie: +${r.points} Punkte · Gesamt: ${state.streak}</div>` : ''}
-    ${levelUp}
-    ${bonuses.length ? `<ul class="new-unlocks">${bonuses.map(bonus => `<li>${bonus}</li>`).join('')}</ul>` : ''}
-    ${repayment ? `<div>Vorschuss-Rückzahlung: −${repayment} Gold · Ausgezahlt: ${r.gold - repayment} Gold</div>` : ''}
-    ${itemRewardResult}
-    <button class="primary" id="next">${state.shopping ? 'Zum Händler' : 'Weiter'}</button>`;
+    <div class="reward-dialog">
+      <div class="reward-customer">
+        <span class="reward-customer-icon" aria-hidden="true">${rewardedCustomer.icon}</span>
+        <div>
+          <strong>${rewardedCustomer.name}</strong>
+          <p>„${rewardCustomerMessage(rewardedCustomer, q)}“</p>
+        </div>
+      </div>
+      <h1>${label}</h1>
+      <div>Erfüllung: ${qualityPercent(q)}%</div>
+      <div>💰 +${r.gold} &nbsp; ⭐ +${r.exp}</div>
+      ${STREAK_ENABLED ? `<div>Serie: +${r.points} Punkte · Gesamt: ${state.streak}</div>` : ''}
+      ${levelUp}
+      ${bonuses.length ? `<ul class="new-unlocks">${bonuses.map(bonus => `<li>${bonus}</li>`).join('')}</ul>` : ''}
+      ${repayment ? `<div>Vorschuss-Rückzahlung: −${repayment} Gold · Ausgezahlt: ${r.gold - repayment} Gold</div>` : ''}
+      ${itemRewardResult}
+      <button class="primary" id="next">${state.shopping ? 'Zum Händler' : 'Weiter'}</button>
+    </div>`;
   render();
   $('result').classList.remove('hidden');
   $('result').scrollTop = 0;
@@ -1194,6 +1233,12 @@ function renderSponsorship() {
   if (stage && !sponsor.trip && sponsor.recoverAt === null) $('startSponsorPacking').onclick = startSponsorPacking;
 }
 
+function openInfo(title, text) {
+  $('infoTitle').textContent = title;
+  $('infoText').textContent = text;
+  $('infoDialog').showModal();
+}
+
 function needsHtml(c, t) {
   return c.needs.map(n => {
     const have = Math.max(0, t[n.attr] || 0);
@@ -1255,8 +1300,8 @@ function updateArrivalStatus() {
   const full = state.queue.length + (state.active ? 1 : 0) >= queueCapacity();
   const minutes = Math.ceil(state.spawnT / 60);
   $('arrivalStatus').textContent = full
-    ? 'Alle Kundenplätze belegt. Neue Ankünfte pausieren, bis du einen Auftrag abschließt.'
-    : `Nächster Kunde in ${minutes} Min. · Kunden warten unbegrenzt, auch wenn du das Spiel schließt.`;
+    ? 'Alle Plätze belegt'
+    : `Nächster Kunde in ${minutes} Min.`;
 }
 
 function render() {
@@ -1301,6 +1346,7 @@ function render() {
   $('customer').innerHTML = c
     ? `<div class="packing-customer-heading">
         <div class="cust-name">${c.name}<small>${sponsorRoute ? sponsorRoute.name : `${c.cls} · ${c.tierLabel} · ${RARITY[c.rarity].label}`}</small></div>
+        <button type="button" class="info-button packing-info-button" aria-label="Erklärung zu Kundenbedürfnissen" data-info-title="${c.name}s Bedürfnisse" data-info-text="Die Bedürfnisse zeigen, was der Kunde für sein Abenteuer benötigt. Wichtigere Wünsche geben bei der Erfüllung mehr Gewicht auf die Boxqualität. Die farbigen Leisten zeigen, wie gut du jeden Wunsch mit den gepackten Items erfüllst.">i</button>
       </div>
       <span class="packing-customer-emblem" aria-hidden="true">${c.icon}</span>`
     : '<div class="empty">Wähle einen Kunden aus der Liste</div>';
@@ -1682,6 +1728,12 @@ $('confirmRestock').onclick = confirmEmergencyRestock;
 $('restockConfirmDialog').addEventListener('close', () => { pendingRestockIds = null; });
 $('openOptions').onclick = () => $('optionsDialog').showModal();
 $('closeOptions').onclick = () => $('optionsDialog').close();
+document.addEventListener('click', event => {
+  const button = event.target.closest('[data-info-title]');
+  if (!button) return;
+  openInfo(button.dataset.infoTitle, button.dataset.infoText);
+});
+$('closeInfo').onclick = () => $('infoDialog').close();
 $('raiseTestLevel').onclick = raiseTestLevel;
 $('resetGame').onclick = resetGame;
 function openRoadmap(selected = null) {

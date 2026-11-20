@@ -1829,6 +1829,26 @@ test('checkpoint details distinguish pending and earned rewards without spending
   assert.equal(run('JSON.stringify(state.queue)'), run('customers'));
 });
 
+test('info dialog displays explanations and closes without changing game state', () => {
+  const run = createGame();
+  run(`openInfo('Kundenbedürfnisse', 'Die Leisten zeigen die Erfüllung.')`);
+  assert.equal(run("$('infoDialog').open"), true);
+  assert.match(run("$('infoText').textContent"), /Leisten.*Erfüllung/);
+  run("$('closeInfo').onclick()");
+  assert.equal(run("$('infoDialog').open"), false);
+});
+
+test('reward screen includes a customer speech dialog with a creative response', () => {
+  const run = createGame();
+  run(`selectCustomer(state.queue[0].id); chooseBox('small');
+    state.active.needs = [{attr:'hp', target:10, prio:1}];
+    packItem('pot1'); send();`);
+  assert.match(run("$('result').innerHTML"), /class="reward-customer"/);
+  assert.match(run("$('result').innerHTML"), /reward-customer-icon/);
+  assert.match(run("$('result').innerHTML"), /Vielen Dank|Danke|hilft|Hoffentlich|Gebrauch|gute|Held|Gegner|Abenteuer|Dungeon|leeren Händen/);
+  assert.match(run("$('result').innerHTML"), /<button class="primary" id="next">/);
+});
+
 test('audio is lazy, reuses one context and creates short fading notes only after interaction', async () => {
   const audio = fakeAudio();
   const run = createGame(audio);

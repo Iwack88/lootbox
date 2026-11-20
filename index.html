@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1b1a2e">
 <meta http-equiv="Cache-Control" content="no-cache">
 <title>Lootbox Packer</title>
-<link rel="stylesheet" href="style.css?v=45">
+<link rel="stylesheet" href="style.css?v=47">
 </head>
 <body>
 <header class="home-header">
@@ -42,8 +42,13 @@
 
 <main class="home">
 <section class="card home-queue" aria-labelledby="queueTitle">
-  <div class="home-section-heading"><h2 id="queueTitle" tabindex="-1">Kunden</h2><small id="queueInfo"></small></div>
-  <p class="queue-guide">Tippe einen Kunden an, um seinen Auftrag zu öffnen.</p>
+  <div class="home-section-heading">
+    <h2 id="queueTitle" tabindex="-1">Kunden</h2>
+    <div class="heading-info">
+      <small id="queueInfo"></small>
+      <button type="button" class="info-button" aria-label="Erklärung zu Kunden" data-info-title="Kundenaufträge" data-info-text="Tippe einen Kunden an, um seinen Auftrag zu öffnen. Jede Person wartet unbegrenzt auf Bearbeitung. Wenn alle Plätze belegt sind, pausieren neue Ankünfte, bis du einen Auftrag abschließt.">i</button>
+    </div>
+  </div>
   <p id="arrivalStatus" class="hint" role="status"></p>
   <div id="queue" class="queue"></div>
   <p id="recruitStatus" class="hint" role="status"></p>
@@ -68,6 +73,14 @@
   <button id="openSponsor" class="secondary" aria-haspopup="dialog" aria-controls="sponsorDialog">Reise ansehen</button>
 </section>
 </main>
+
+<dialog id="infoDialog" class="merchant-dialog info-dialog" aria-labelledby="infoTitle">
+  <div class="merchant-heading">
+    <h2 id="infoTitle">Hinweis</h2>
+    <button id="closeInfo" class="secondary">Schließen</button>
+  </div>
+  <p id="infoText"></p>
+</dialog>
 
 <dialog id="sponsorDialog" class="merchant-dialog item-dialog" aria-labelledby="sponsorTitle">
   <div class="merchant-heading">
@@ -271,6 +284,6 @@
 
 <div id="result" class="overlay hidden"></div>
 <script src="sound.js?v=29"></script>
-<script src="game.js?v=41"></script>
+<script src="game.js?v=43"></script>
 </body>
 </html>
