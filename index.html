@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1b1a2e">
 <meta http-equiv="Cache-Control" content="no-cache">
 <title>Lootbox Packer</title>
-<link rel="stylesheet" href="style.css?v=47">
+<link rel="stylesheet" href="style.css?v=49">
 </head>
 <body>
 <header class="home-header">
@@ -30,7 +30,7 @@
 <p id="saveAlert" class="hint" role="alert" hidden></p>
 
 <div class="level-status">
-  <span>EXP: <b id="exp">0/100</b></span>
+  <div class="level-status-heading"><span>EXP-Fortschritt</span><b id="exp">0/100</b></div>
   <progress id="levelProgress" max="100" value="0" aria-label="Fortschritt zum nächsten Level"></progress>
 </div>
 
@@ -97,12 +97,12 @@
   <div class="order-heading">
     <button id="backToCustomers" class="secondary">← Kunden</button>
     <h2 id="orderTitle" tabindex="-1">Box wählen</h2>
+    <button type="button" class="info-button" aria-label="Erklärung zur Box-Auswahl" data-info-title="Box-Auswahl" data-info-text="Die Slots begrenzen, wie viele Items in die Kiste passen. Größere Kisten bieten mehr Platz, werden aber erst mit höheren Leveln freigeschaltet. Eine Auswahl wird erst beim Packen wirksam.">i</button>
   </div>
   <div class="card selection-customer">
     <h3>Kunde und Wünsche</h3>
     <div id="selectionCustomer"></div>
   </div>
-  <p class="hint">Wähle eine freigeschaltete Box. Der ausgewählte Kunde wartet während der Bearbeitung.</p>
   <div id="boxPicker" class="picker"></div>
 </section>
 
@@ -284,6 +284,6 @@
 
 <div id="result" class="overlay hidden"></div>
 <script src="sound.js?v=29"></script>
-<script src="game.js?v=43"></script>
+<script src="game.js?v=45"></script>
 </body>
 </html>
