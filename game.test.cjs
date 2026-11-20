@@ -1507,6 +1507,33 @@ test('restock advances only missing gold and debt is deducted from rewards witho
   assert.equal(run('state.debt'), 13);
 });
 
+test('restock confirmation previews the exact package and cancel spends nothing', () => {
+  const run = createShoppingGame();
+  run(`finishShopping(); state.gold = 7;
+    state.inventory = Object.fromEntries(RESTOCK_IDS.map(id => [id, 5]));
+    openRestockConfirmation()`);
+  const ids = JSON.parse(run('JSON.stringify(pendingRestockIds)'));
+  const names = ids.map(id => run(`ITEMS.find(item => item.id === '${id}').name`));
+  assert.equal(run("$('restockConfirmDialog').open"), true);
+  assert.match(run("$('restockConfirmCost').textContent"), /20 Gold.*7 Gold/);
+  for (const name of names) assert.ok(run("$('restockConfirmItems').textContent").includes(name));
+  assert.match(run("$('restockHint').textContent"), /13 Gold.*Vorschuss/);
+  run("$('cancelRestock').onclick()");
+  assert.equal(run('state.gold'), 7);
+  assert.equal(run('state.debt'), 0);
+  assert.equal(run('Object.values(state.inventory).reduce((sum, count) => sum + count, 0)'), 20);
+  run('openRestockConfirmation()');
+  const confirmedIds = JSON.parse(run('JSON.stringify(pendingRestockIds)'));
+  run('confirmEmergencyRestock()');
+  assert.equal(run('state.gold'), 0);
+  assert.equal(run('state.debt'), 13);
+  for (const id of JSON.parse(run('JSON.stringify(RESTOCK_IDS)'))) {
+    const quantity = 5 + confirmedIds.filter(itemId => itemId === id).length;
+    assert.equal(run(`state.inventory.${id}`), quantity);
+  }
+  assert.equal(run("$('restockConfirmDialog').open"), false);
+});
+
 test('order flow supports back navigation, restores items and reserves a place for the active customer', () => {
   const run = createGame();
   run(`globalThis.id = state.queue[0].id; globalThis.customer = JSON.stringify(state.queue[0]);

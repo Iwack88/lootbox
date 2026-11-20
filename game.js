@@ -843,12 +843,16 @@ function finishShopping() {
   render();
 }
 
-function emergencyRestock() {
-  if (state.shopping || state.showingResult || (state.debt > 0 && state.gold < RESTOCK_COST)) return;
+function rollEmergencyRestock() {
   const first = pick(RESTOCK_IDS);
   const second = pick(RESTOCK_IDS.filter(id => id !== first));
   const ids = [first, second];
   while (ids.length < RESTOCK_SIZE) ids.push(pick(RESTOCK_IDS));
+  return ids;
+}
+
+function emergencyRestock(ids = rollEmergencyRestock()) {
+  if (state.shopping || state.showingResult || (state.debt > 0 && state.gold < RESTOCK_COST)) return false;
   const paid = Math.min(state.gold, RESTOCK_COST);
   state.gold -= paid;
   state.debt += RESTOCK_COST - paid;
@@ -856,6 +860,30 @@ function emergencyRestock() {
   $('restockResult').textContent = 'Erhalten: ' + ids.map(id => ITEMS.find(it => it.id === id).name).join(', ');
   sfx.play('checkout');
   render();
+  return true;
+}
+
+let pendingRestockIds = null;
+
+function openRestockConfirmation() {
+  if (state.shopping || state.showingResult || (state.debt > 0 && state.gold < RESTOCK_COST)) return;
+  pendingRestockIds = rollEmergencyRestock();
+  const items = pendingRestockIds.map(id => ITEMS.find(item => item.id === id));
+  $('restockConfirmItems').textContent = `Du erhältst: ${items.map(item => item.name).join(', ')}. Mindestens zwei Attribute sind enthalten.`;
+  $('restockConfirmCost').textContent = `Kosten: ${RESTOCK_COST} Gold. Dein aktuelles Guthaben: ${state.gold} Gold.`;
+  $('restockHint').textContent = state.gold < RESTOCK_COST
+    ? `Die fehlenden ${RESTOCK_COST - state.gold} Gold werden als Vorschuss gebucht und von späteren Belohnungen abgezogen.`
+    : state.debt
+      ? `Offener Vorschuss: ${state.debt} Gold. Er wird von späteren Belohnungen abgezogen.`
+      : 'Der Betrag wird sofort bezahlt.';
+  $('confirmRestock').textContent = `Für ${RESTOCK_COST} Gold auffüllen`;
+  $('restockConfirmDialog').showModal();
+}
+
+function confirmEmergencyRestock() {
+  if (!pendingRestockIds || !emergencyRestock(pendingRestockIds)) return;
+  pendingRestockIds = null;
+  $('restockConfirmDialog').close();
 }
 
 function packItem(id, position = null) {
@@ -1269,8 +1297,6 @@ function render() {
     ? `${state.shopOffers.length} Angebote: 4 feste Basis-Items und ${Math.max(0, state.shopOffers.length - SHOP_BASE_IDS.length)} zufällige Extras. Nächster Angebotsplatz: Level ${(Math.floor(progress.level / SHOP_SLOT_INTERVAL) + 1) * SHOP_SLOT_INTERVAL}. Auswahl bleibt für diesen Besuch gleich. Händlerpreise: +25 %, auf ganze Gold aufgerundet; Serienrabatt gilt danach. Jeder Kauf landet im Inventar.`
     : 'Der Händler ist vorerst deaktiviert. Nutze Bestellungen im Inventar, die Werkstatt oder den Notfall-Restock.';
   $('restock').disabled = state.shopping || state.showingResult || (state.debt > 0 && state.gold < RESTOCK_COST);
-  $('restockCost').textContent = `${RESTOCK_COST} Gold`;
-  $('restockHint').textContent = `${RESTOCK_SIZE} zufällige Basis-Items: kleiner Heiltrank, Kurzschwert, Holzschild oder Zauberstab. Mindestens zwei Attribute. Fehlendes Gold wird als Vorschuss mit künftigen Goldbelohnungen verrechnet. ${state.debt ? 'Kein weiterer Vorschuss, bis die offene Gebühr bezahlt ist.' : ''}`;
 
   $('customer').innerHTML = c
     ? `<div class="packing-customer-heading">
@@ -1647,7 +1673,13 @@ $('orderDialog').addEventListener('cancel', event => {
 $('finishShopping').onclick = finishShopping;
 $('checkout').onclick = checkout;
 $('shopDialog').addEventListener('cancel', event => event.preventDefault());
-$('restock').onclick = emergencyRestock;
+$('restock').onclick = openRestockConfirmation;
+$('cancelRestock').onclick = () => {
+  pendingRestockIds = null;
+  $('restockConfirmDialog').close();
+};
+$('confirmRestock').onclick = confirmEmergencyRestock;
+$('restockConfirmDialog').addEventListener('close', () => { pendingRestockIds = null; });
 $('openOptions').onclick = () => $('optionsDialog').showModal();
 $('closeOptions').onclick = () => $('optionsDialog').close();
 $('raiseTestLevel').onclick = raiseTestLevel;

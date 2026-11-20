@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1b1a2e">
 <meta http-equiv="Cache-Control" content="no-cache">
 <title>Lootbox Packer</title>
-<link rel="stylesheet" href="style.css?v=40">
+<link rel="stylesheet" href="style.css?v=41">
 </head>
 <body>
 <header>
@@ -90,7 +90,7 @@
 
 <section id="packingView" hidden aria-labelledby="packingTitle">
   <div class="order-heading">
-    <button id="backToBoxes" class="secondary">← Box wählen</button>
+    <button id="backToBoxes" class="primary">← Box wählen</button>
     <h2 id="packingTitle" tabindex="-1">Box packen</h2>
   </div>
   <div class="packing-layout">
@@ -121,11 +121,10 @@
       <h3 id="packingInventoryTitle">Items &amp; Vorrat <small id="inventoryInfo"></small></h3>
       <div class="packing-inventory-tools">
         <button id="packingSupply" class="secondary">Bestellen</button>
-        <button id="restock" class="secondary">Notfall-Restock <small id="restockCost"></small></button>
+        <button id="restock" class="secondary">Restock</button>
       </div>
     </div>
     <p id="packingSaveStatus" class="hint" role="status" hidden></p>
-    <p id="restockHint" class="hint" hidden></p>
   </div>
   <div id="inventory" class="icon-grid packing-inventory-list"></div>
   <div class="packing-inventory-footer">
@@ -135,6 +134,19 @@
 </section>
   <div class="order-actions"><button id="send" class="primary">📦 Absenden</button></div>
 </section>
+</dialog>
+
+<dialog id="restockConfirmDialog" class="merchant-dialog restock-dialog" aria-labelledby="restockConfirmTitle">
+  <div class="merchant-heading">
+    <h2 id="restockConfirmTitle">Notfall-Restock</h2>
+    <button id="cancelRestock" class="secondary">Abbrechen</button>
+  </div>
+  <p id="restockConfirmItems"></p>
+  <p id="restockConfirmCost"></p>
+  <p id="restockHint" class="hint"></p>
+  <div class="restock-confirm-actions">
+    <button id="confirmRestock" class="primary">Für 20 Gold auffüllen</button>
+  </div>
 </dialog>
 
 <!-- Händler vorerst deaktiviert; Oberfläche für eine spätere Rückkehr erhalten. -->
@@ -254,6 +266,6 @@
 
 <div id="result" class="overlay hidden"></div>
 <script src="sound.js?v=29"></script>
-<script src="game.js?v=40"></script>
+<script src="game.js?v=41"></script>
 </body>
 </html>
