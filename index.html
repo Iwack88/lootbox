@@ -6,15 +6,18 @@
 <meta name="theme-color" content="#1b1a2e">
 <meta http-equiv="Cache-Control" content="no-cache">
 <title>Lootbox Packer</title>
-<link rel="stylesheet" href="style.css?v=41">
+<link rel="stylesheet" href="style.css?v=45">
 </head>
 <body>
-<header>
-  <span>💰 <b id="gold">0</b></span>
-  <span>⭐ Level <b id="level">1</b></span>
-  <button id="openOptions" class="secondary" aria-haspopup="dialog" aria-controls="optionsDialog">Optionen</button>
+<header class="home-header">
+  <div class="home-brand"><span aria-hidden="true">📦</span><span><strong>Lootbox</strong><small>PACKER</small></span></div>
+  <div class="home-header-actions">
+    <span class="home-stat">💰 <b id="gold">0</b></span>
+    <span class="home-stat">⭐ <b id="level">1</b></span>
+    <button id="openOptions" class="secondary" aria-label="Optionen" aria-haspopup="dialog" aria-controls="optionsDialog">⚙️</button>
+  </div>
   <section class="streak-status" aria-label="Level-Meilensteine">
-    <div class="streak-heading"><span>⭐ Meilensteine · Level <b id="streakPoints">1</b></span><button id="showStreak" class="secondary" aria-haspopup="dialog" aria-controls="roadmapDialog">Alle ansehen</button></div>
+    <div class="streak-heading"><span>Meilensteine · Level <b id="streakPoints">1</b></span><button id="showStreak" class="secondary" aria-haspopup="dialog" aria-controls="roadmapDialog">Alle ansehen</button></div>
     <div class="streak-track">
       <span id="trackStart" class="streak-zero">1</span>
       <progress id="streakProgress" value="0" max="5" aria-label="Fortschritt zu den nächsten Level-Meilensteinen"></progress>
@@ -38,26 +41,28 @@
 </div>
 
 <main class="home">
-<section class="card">
-  <h2>📦 Inventar &amp; Bestellungen</h2>
-  <p id="supplySummary" class="hint"></p>
-  <button id="openSupply" class="secondary" aria-haspopup="dialog" aria-controls="supplyDialog">Inventar öffnen</button>
-</section>
-<section class="card workshop-home">
-  <h2>🔨 Werkstatt</h2>
-  <p id="workshopSummary" class="hint"></p>
-  <p id="homeMaterials" class="hint"></p>
-  <button id="openWorkshop" class="secondary" aria-haspopup="dialog" aria-controls="workshopDialog">Werkstatt öffnen</button>
-</section>
-<section class="card" aria-labelledby="queueTitle">
-  <h2 id="queueTitle" tabindex="-1">Kunden <small id="queueInfo"></small></h2>
-  <p class="hint">Alle 30 Minuten kommt ein Kunde dazu, solange ein Platz frei ist. Wähle einen Kunden, um seine Box zu packen.</p>
+<section class="card home-queue" aria-labelledby="queueTitle">
+  <div class="home-section-heading"><h2 id="queueTitle" tabindex="-1">Kunden</h2><small id="queueInfo"></small></div>
+  <p class="queue-guide">Tippe einen Kunden an, um seinen Auftrag zu öffnen.</p>
   <p id="arrivalStatus" class="hint" role="status"></p>
   <div id="queue" class="queue"></div>
   <p id="recruitStatus" class="hint" role="status"></p>
-  <button id="recruitCustomer" class="secondary">Kunden anwerben · 10 Gold</button>
+  <button id="recruitCustomer" class="primary">Kunden anwerben · 10 Gold</button>
 </section>
-<section id="sponsorCard" class="card" hidden>
+<div class="home-utilities" aria-label="Lager und Werkstatt">
+  <section class="card home-tool-card">
+    <h2>📦 Lager &amp; Bestellungen</h2>
+    <p id="supplySummary" class="hint"></p>
+    <button id="openSupply" class="secondary" aria-haspopup="dialog" aria-controls="supplyDialog">Bestellen</button>
+  </section>
+  <section class="card home-tool-card workshop-home">
+    <h2>🔨 Werkstatt</h2>
+    <p id="workshopSummary" class="hint"></p>
+    <details class="home-materials"><summary>Materialien ansehen</summary><p id="homeMaterials" class="hint"></p></details>
+    <button id="openWorkshop" class="secondary" aria-haspopup="dialog" aria-controls="workshopDialog">Werkstatt öffnen</button>
+  </section>
+</div>
+<section id="sponsorCard" class="card home-sponsor" hidden>
   <h2>🧭 Abenteurer-Sponsoring</h2>
   <p id="sponsorSummary" class="hint"></p>
   <button id="openSponsor" class="secondary" aria-haspopup="dialog" aria-controls="sponsorDialog">Reise ansehen</button>
