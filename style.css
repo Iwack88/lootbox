@@ -20,6 +20,20 @@ header { display: flex; justify-content: space-between; font-size: 18px; }
 .home-header-actions { display: flex; align-items: center; gap: 5px; }
 .home-stat { display: flex; align-items: center; gap: 4px; min-height: 38px; padding: 0 9px; border: 1px solid #514252; border-radius: 10px; background: #26253f; white-space: nowrap; }
 .home-header-actions #openOptions { min-height: 38px; padding: 6px 9px; }
+.home-arrival-timer {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0 8px;
+  color: #f2d3a9;
+  border: 1px solid #8a6748;
+  border-radius: 10px;
+  background: #352218;
+  font-size: 11px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
 .home-header .streak-status { grid-column: 1 / -1; flex: initial; min-width: 0; margin: 0; padding: 7px 10px; border: 1px solid #514252; }
 .home-header .streak-track { height: 8px; margin: 7px 0 3px; }
 .home-header .streak-track progress { top: 0; height: 6px; }
@@ -51,9 +65,9 @@ header { display: flex; justify-content: space-between; font-size: 18px; }
 .info-button:active { transform: scale(.94); }
 .info-dialog { max-width: 420px; }
 .info-dialog #infoText { margin: 4px 0 2px; line-height: 1.55; }
-.home-queue #arrivalStatus { margin: 0 0 8px; padding: 6px 9px; border-radius: 8px; background: #211d2b88; font-size: 12px; }
 .home-queue #recruitStatus:empty { display: none; }
-.home-queue #recruitCustomer { width: auto; min-height: 42px; margin-top: 8px; padding: 8px 12px; font-size: 14px; }
+.home-queue #recruitStatus { text-align: center; }
+.home-queue #recruitCustomer { display: block; width: auto; min-width: 210px; min-height: 42px; margin: 12px auto 0; padding: 8px 12px; font-size: 14px; }
 .home-utilities { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
 .home-tool-card { display: flex; flex-direction: column; align-items: stretch; gap: 8px; padding: 12px; }
 .home-tool-card h2 { margin: 0; font-size: 16px; }
@@ -118,7 +132,6 @@ header { display: flex; justify-content: space-between; font-size: 18px; }
   color: #ffe7bc;
 }
 .queue-guide { color: #ead3b3; }
-.home-queue #arrivalStatus { background: #291b14; border: 1px solid #8b5e3d; }
 .home-queue .queue-item {
   color: #392316;
   border: 2px solid #ad794c;
@@ -660,6 +673,8 @@ button[hidden] { display: none; }
 .restock-confirm-actions .primary { color: #35200e; background: linear-gradient(#ffdf96, #df9d49); }
 
 @media (max-width: 699px) {
+  .home-header-actions { flex-wrap: wrap; justify-content: flex-end; max-width: 170px; }
+  .home-arrival-timer { flex-basis: 100%; min-height: 28px; margin-top: 1px; }
   .order-dialog:has(#boxSelection:not([hidden])) {
     padding: 8px;
   }

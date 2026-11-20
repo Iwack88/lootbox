@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1b1a2e">
 <meta http-equiv="Cache-Control" content="no-cache">
 <title>Lootbox Packer</title>
-<link rel="stylesheet" href="style.css?v=49">
+<link rel="stylesheet" href="style.css?v=51">
 </head>
 <body>
 <header class="home-header">
@@ -14,6 +14,7 @@
   <div class="home-header-actions">
     <span class="home-stat">💰 <b id="gold">0</b></span>
     <span class="home-stat">⭐ <b id="level">1</b></span>
+    <span class="home-arrival-timer" id="arrivalStatus" role="status">Kunde · --:--</span>
     <button id="openOptions" class="secondary" aria-label="Optionen" aria-haspopup="dialog" aria-controls="optionsDialog">⚙️</button>
   </div>
   <section class="streak-status" aria-label="Level-Meilensteine">
@@ -49,7 +50,6 @@
       <button type="button" class="info-button" aria-label="Erklärung zu Kunden" data-info-title="Kundenaufträge" data-info-text="Tippe einen Kunden an, um seinen Auftrag zu öffnen. Jede Person wartet unbegrenzt auf Bearbeitung. Wenn alle Plätze belegt sind, pausieren neue Ankünfte, bis du einen Auftrag abschließt.">i</button>
     </div>
   </div>
-  <p id="arrivalStatus" class="hint" role="status"></p>
   <div id="queue" class="queue"></div>
   <p id="recruitStatus" class="hint" role="status"></p>
   <button id="recruitCustomer" class="primary">Kunden anwerben · 10 Gold</button>
@@ -284,6 +284,6 @@
 
 <div id="result" class="overlay hidden"></div>
 <script src="sound.js?v=29"></script>
-<script src="game.js?v=45"></script>
+<script src="game.js?v=47"></script>
 </body>
 </html>
