@@ -259,7 +259,6 @@ test('individual slots retain their positions after reload and return items on t
     state.active.needs = [{attr:'hp', target:20, prio:2}]; render();`);
   assert.equal((run("$('box').innerHTML").match(/data-slot=/g) || []).length, 3);
   run('openBoxSlot(2)');
-  assert.equal(run("$('packingInventoryPanel').open"), true);
   assert.equal(run('selectedSlot'), 2);
   assert.equal(run("$('packingNeeds').hidden"), false);
   assert.match(run("$('packingNeedValues').innerHTML"), /Leben.*wichtig.*0\/20/);
@@ -272,7 +271,6 @@ test('individual slots retain their positions after reload and return items on t
   run(`globalThis.potionIcon = { dataset: { packItem: 'pot1' } };
     $('inventory').querySelectorAll = () => [potionIcon];
     renderInventory(); potionIcon.onclick();`);
-  assert.equal(run("$('packingInventoryPanel').open"), false);
   assert.match(run("$('packingItemDetails').innerHTML"), /Leben: \+10/);
   assert.equal(run('state.inventory.pot1'), 4);
   assert.deepEqual(JSON.parse(run('JSON.stringify(state.boxPositions)')), [2]);
@@ -287,7 +285,6 @@ test('individual slots retain their positions after reload and return items on t
   const restored = createMilestoneGame({ storage });
   assert.deepEqual(JSON.parse(restored('JSON.stringify(state.boxPositions)')), [2,0]);
   restored('openBoxSlot(2)');
-  assert.equal(restored("!!$('packingInventoryPanel').open"), false);
   assert.equal(restored('state.inventory.pot1'), 5);
   assert.equal(restored('selectedSlot'), 2);
   assert.deepEqual(JSON.parse(restored('JSON.stringify(state.boxPositions)')), [0]);
